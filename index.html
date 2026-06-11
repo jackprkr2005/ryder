@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ryder — Organise your own Ryder Cup</title>
-  <meta name="description" content="Bring golfers together to organise Ryder Cup style days out — teams, captains, match play and a live scoreboard." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <title>Ryder — where golfers meet, organise and play</title>
+  <meta name="description" content="The social home for golf societies and clubs — find players near you, join a society, organise Ryder Cup style days out and share the results." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%E2%9B%B3%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -13,7 +12,7 @@
   <div id="app">
     <!-- Top bar -->
     <header class="topbar">
-      <div class="brand">
+      <div class="brand" data-nav="feed">
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M5 21V4l11 3-11 3" fill="currentColor" stroke="none"/>
@@ -22,27 +21,29 @@
         </span>
         <div class="brand-text">
           <strong>Ryder</strong>
-          <span>organise your own cup</span>
+          <span>meet · organise · play</span>
         </div>
       </div>
 
+      <label class="search">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+        <input id="search" type="text" placeholder="Search players, societies, days out…" />
+      </label>
+
       <nav class="tabs" id="tabs" aria-label="Primary">
-        <button class="tab is-active" data-view="scoreboard">Scoreboard</button>
-        <button class="tab" data-view="matches">Matches</button>
-        <button class="tab" data-view="teams">Teams</button>
-        <button class="tab" data-view="create">New event</button>
+        <button class="tab is-active" data-nav="feed">Feed</button>
+        <button class="tab" data-nav="discover">Discover</button>
+        <button class="tab" data-nav="events">My days</button>
       </nav>
 
-      <div class="event-pill" id="eventPill">
-        <span class="dot live"></span>
-        <span id="eventPillText">Live event</span>
-      </div>
+      <button class="btn new-day" id="newDay">＋ New day</button>
+      <button class="me-avatar" id="meAvatar" data-nav="profile" title="Your profile"></button>
     </header>
 
     <main id="main"><!-- views render here --></main>
 
     <footer class="appfoot">
-      <span>Ryder · a friendlier way to run your golf day</span>
+      <span>Ryder · the social home for golf societies</span>
       <span class="muted" id="footMeta"></span>
     </footer>
   </div>

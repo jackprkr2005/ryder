@@ -1,325 +1,569 @@
 /* ------------------------------------------------------------------
-   Ryder — front-end app
-   A small dependency-free SPA: state -> render -> events.
+   Ryder — social front-end
+   Dependency-free SPA: state -> router -> render -> delegated events.
 ------------------------------------------------------------------ */
 (function () {
   "use strict";
 
-  const STORE_KEY = "ryder.state.v1";
+  const STORE = "ryder.social.v1";
+  const data = structuredClone(window.RYDER_SEED);
+  const ME = data.me;
 
-  // ---- state -------------------------------------------------------
-  const saved = (() => {
-    try { return JSON.parse(localStorage.getItem(STORE_KEY)); } catch { return null; }
-  })();
-  const state = saved || structuredClone(window.RYDER_SEED);
-  state.view = "scoreboard";
+  // UI state that the user can change (persisted)
+  const ui = Object.assign(
+    { joined: [], going: [], react: {} },
+    (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } })()
+  );
+  ui.joined = new Set(ui.joined);
+  ui.going = new Set(ui.going);
+  const persist = () =>
+    localStorage.setItem(STORE, JSON.stringify({
+      joined: [...ui.joined], going: [...ui.going], react: ui.react,
+    }));
 
-  function persist() {
-    const { view, ...rest } = state;
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(rest)); } catch {}
+  let route = { view: "feed", id: null, tab: null };
+
+  // ---- lookups -----------------------------------------------------
+  const golfer  = (id) => data.golfers.find((g) => g.id === id);
+  const society = (id) => data.societies.find((s) => s.id === id);
+  const event   = (id) => data.events.find((e) => e.id === id);
+  const me = () => golfer(ME);
+
+  const COLOURS = {
+    green:[" #1f9d57","#0c5a2b"], blue:["#3f6fe0","#234fb8"], red:["#e84a4a","#bf2222"],
+    amber:["#e0a23f","#b87410"], violet:["#8b5cf6","#6d28d9"], teal:["#14b8a6","#0d9488"],
+    pink:["#ec4899","#be185d"], slate:["#64748b","#475569"], orange:["#f97316","#c2410c"],
+    cyan:["#22b8d6","#0891b2"], lime:["#84cc16","#4d7c0f"], indigo:["#6366f1","#4338ca"],
+  };
+  const grad = (c) => { const p = COLOURS[c] || COLOURS.slate; return `linear-gradient(150deg,${p[0]},${p[1]})`; };
+  const initials = (name) => name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  const fmtPts = (n) => (n % 1 === 0 ? String(n) : (Math.floor(n) || "") + "½");
+
+  // social avatar for a golfer
+  function av(id, size = 38) {
+    const g = golfer(id);
+    return `<button class="uavatar" data-nav="profile" data-id="${id}" title="${g.name}"
+      style="width:${size}px;height:${size}px;font-size:${Math.round(size*0.36)}px;background:${grad(g.colour)}">${initials(g.name)}</button>`;
+  }
+  function avatarStack(ids, max = 5, size = 30) {
+    const shown = ids.slice(0, max);
+    const extra = ids.length - shown.length;
+    return `<span class="stack">
+      ${shown.map((id) => `<span class="stack-av" style="width:${size}px;height:${size}px;background:${grad(golfer(id).colour)}" title="${golfer(id).name}">${initials(golfer(id).name)}</span>`).join("")}
+      ${extra > 0 ? `<span class="stack-more" style="width:${size}px;height:${size}px">+${extra}</span>` : ""}
+    </span>`;
   }
 
-  // ---- helpers -----------------------------------------------------
-  const $ = (sel, root = document) => root.querySelector(sel);
-  const playerById = (id) => state.players.find((p) => p.id === id);
-  const initials = (name) =>
-    name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
-  const fmtPts = (n) => (n % 1 === 0 ? String(n) : Math.floor(n) + "½").replace(/^0½/, "½");
+  // ---- membership / rsvp / reactions ------------------------------
+  const isMember = (sid) => society(sid).members.includes(ME) || ui.joined.has(sid);
+  const memberCount = (s) => s.members.length + (s.members.includes(ME) ? 0 : (ui.joined.has(s.id) ? 1 : 0));
+  const isGoing = (eid) => event(eid).attendees.includes(ME) || ui.going.has(eid);
+  const goingCount = (e) => e.attendees.length + (e.attendees.includes(ME) ? 0 : (ui.going.has(e.id) ? 1 : 0));
 
-  function pointsFor(team) {
-    let pts = 0;
-    state.sessions.forEach((s) =>
-      s.matches.forEach((m) => {
-        if (m.winner === team) pts += 1;
-        else if (m.winner === "halved") pts += 0.5;
-      })
-    );
-    return pts;
+  function reactCount(post, emoji) {
+    const base = post.reactions[emoji] || 0;
+    return base + (ui.react[post.id] === emoji ? 1 : 0);
   }
-  function totalMatches() {
-    return state.sessions.reduce((n, s) => n + s.matches.length, 0);
+
+  // ===================================================================
+  //  FEED
+  // ===================================================================
+  function postHead(opts) {
+    // opts: { avatar, title, sub, time }
+    return `<div class="post-head">
+      ${opts.avatar}
+      <div class="ph-text">
+        <div class="ph-title">${opts.title}</div>
+        <div class="ph-sub">${opts.sub} · ${opts.time}</div>
+      </div>
+    </div>`;
+  }
+  function socAvatar(sid, size = 40) {
+    const s = society(sid);
+    return `<button class="soc-avatar" data-nav="society" data-id="${sid}" title="${s.name}"
+      style="width:${size}px;height:${size}px;background:${grad(s.colour)}">⛳</button>`;
+  }
+  function reactionBar(post) {
+    const emojis = Object.keys(post.reactions);
+    const total = emojis.reduce((n, e) => n + reactCount(post, e), 0);
+    const nComments = post.comments.length;
+    return `<div class="react-bar">
+      <div class="reacts">
+        ${emojis.map((e) => `<button class="react ${ui.react[post.id] === e ? "on" : ""}" data-act="react" data-post="${post.id}" data-emoji="${e}">${e} <b>${reactCount(post, e)}</b></button>`).join("")}
+      </div>
+      <div class="react-meta">${total} reactions · ${nComments} comment${nComments === 1 ? "" : "s"}</div>
+    </div>`;
+  }
+  function comments(post) {
+    if (!post.comments.length) return "";
+    return `<div class="comments">
+      ${post.comments.map((c) => `<div class="comment">${av(c.by, 28)}
+        <div><b>${golfer(c.by).name}</b> <span class="muted">${c.time}</span><br/>${c.text}</div></div>`).join("")}
+      <div class="comment add"><span class="uavatar" style="width:28px;height:28px;font-size:10px;background:${grad(me().colour)}">${initials(me().name)}</span>
+        <input placeholder="Add a comment…" /></div>
+    </div>`;
+  }
+
+  function eventMini(eid) {
+    const e = event(eid);
+    const s = society(e.societyId);
+    const filled = goingCount(e), pct = Math.round((filled / e.capacity) * 100);
+    const going = isGoing(eid);
+    const tags = (e.formats || []).map((f) => `<span class="chip">${f}</span>`).join("");
+    return `<div class="event-mini" data-nav="event" data-id="${eid}">
+      <div class="em-top">
+        <div>
+          <div class="em-title">${e.title}</div>
+          <div class="em-meta">${e.date} · ${e.venue}</div>
+        </div>
+        <span class="em-status ${e.status}">${e.status === "open" ? "Open day" : e.when}</span>
+      </div>
+      ${tags ? `<div class="chips">${tags}</div>` : ""}
+      <div class="em-fill"><span style="width:${pct}%;background:${grad(s.colour)}"></span></div>
+      <div class="em-foot">
+        ${avatarStack(e.attendees, 6, 28)}
+        <span class="em-count">${filled} of ${e.capacity} going</span>
+        <button class="btn ${going ? "ghost" : "primary"} sm" data-act="rsvp" data-id="${eid}" onclick="event.stopPropagation()">${going ? "✓ Going" : "Join day"}</button>
+      </div>
+    </div>`;
+  }
+
+  function feedCard(post) {
+    let head = "", body = "";
+    if (post.type === "event") {
+      head = postHead({ avatar: socAvatar(post.authorSociety), title: society(post.authorSociety).name, sub: "hosting a day out", time: post.time });
+      body = `<p class="post-text">${post.text}</p>${eventMini(post.eventId)}`;
+    } else if (post.type === "result") {
+      const r = post.result;
+      head = postHead({ avatar: socAvatar(post.authorSociety), title: society(post.authorSociety).name, sub: "final result", time: post.time });
+      body = `<p class="post-text">${post.text}</p>
+        <div class="scoreline">
+          <div class="sl-side ${r.blue >= r.red ? "win" : ""}"><span class="sl-name"><span class="team-chip blue"></span>Team Azure</span><span class="sl-score">${fmtPts(r.blue)}</span></div>
+          <div class="sl-cup">🏆<div class="sl-sub">${r.event}</div></div>
+          <div class="sl-side right ${r.red > r.blue ? "win" : ""}"><span class="sl-name">Team Crimson<span class="team-chip red"></span></span><span class="sl-score">${fmtPts(r.red)}</span></div>
+        </div>`;
+    } else if (post.type === "photo") {
+      head = postHead({ avatar: av(post.authorGolfer, 40), title: golfer(post.authorGolfer).name, sub: "@" + golfer(post.authorGolfer).handle, time: post.time });
+      body = `<p class="post-text">${post.text}</p>
+        <div class="photo" style="background:${grad(post.tint)}"><span class="photo-cap">📷 ${post.caption}</span></div>`;
+    } else if (post.type === "join") {
+      head = postHead({ avatar: av(post.authorGolfer, 40), title: golfer(post.authorGolfer).name, sub: "@" + golfer(post.authorGolfer).handle, time: post.time });
+      body = `<p class="post-text">${post.text.replace(/The [^.]+/, (m) => `<a data-nav="society" data-id="${post.societyId}" class="link">${m}</a>`)}</p>`;
+    }
+    return `<article class="card post">${head}${body}${reactionBar(post)}${comments(post)}</article>`;
+  }
+
+  function viewFeed() {
+    const myNext = data.events.find((e) => isGoing(e.id) && e.status !== "complete");
+    const suggestions = data.societies.filter((s) => !isMember(s.id)).slice(0, 3);
+    const feed = data.feed.map(feedCard).join("");
+
+    return `<div class="view feed-wrap">
+      <div class="feed-col">
+        <div class="composer card">
+          <span class="uavatar" style="width:40px;height:40px;background:${grad(me().colour)}">${initials(me().name)}</span>
+          <button class="composer-fake" data-act="compose">Share a result, post a photo, or start a day out…</button>
+          <button class="btn primary sm" data-act="compose">Post</button>
+        </div>
+        ${feed}
+      </div>
+
+      <aside class="rail">
+        ${myNext ? `<div class="card rail-card next-day" data-nav="event" data-id="${myNext.id}">
+          <div class="rail-eyebrow">Your next day out</div>
+          <div class="nd-title">${myNext.title}</div>
+          <div class="nd-meta">${myNext.date}</div>
+          <div class="nd-meta">${myNext.venue}</div>
+          <div class="nd-foot">${avatarStack(myNext.attendees, 5, 26)}<span class="muted">${goingCount(myNext)} going · ${myNext.when}</span></div>
+        </div>` : ""}
+
+        <div class="card rail-card">
+          <div class="rail-eyebrow">Societies near you</div>
+          ${suggestions.map((s) => `<div class="sug">
+            ${socAvatar(s.id, 36)}
+            <div class="sug-text" data-nav="society" data-id="${s.id}">
+              <div class="sug-name">${s.name}</div>
+              <div class="sug-meta">${s.loc} · ${memberCount(s)} members</div>
+            </div>
+            <button class="btn ${isMember(s.id) ? "ghost" : "outline"} xs" data-act="join" data-id="${s.id}">${isMember(s.id) ? "Joined" : "Join"}</button>
+          </div>`).join("")}
+          <button class="rail-link" data-nav="discover">Discover more →</button>
+        </div>
+      </aside>
+    </div>`;
+  }
+
+  // ===================================================================
+  //  DISCOVER
+  // ===================================================================
+  function societyCard(s) {
+    const upcoming = data.events.filter((e) => e.societyId === s.id && e.status !== "complete").length;
+    return `<div class="card disc-card">
+      <div class="disc-cover" style="background:${grad(s.colour)}"><span>⛳</span></div>
+      <div class="disc-body">
+        <div class="disc-name" data-nav="society" data-id="${s.id}">${s.name}</div>
+        <div class="disc-meta">📍 ${s.loc} · ${memberCount(s)} members${upcoming ? ` · ${upcoming} upcoming` : ""}</div>
+        <p class="disc-about">${s.about}</p>
+        <div class="disc-foot">
+          ${avatarStack(s.members, 5, 28)}
+          <button class="btn ${isMember(s.id) ? "ghost" : "primary"} sm" data-act="join" data-id="${s.id}">${isMember(s.id) ? "✓ Member" : "Join society"}</button>
+        </div>
+      </div>
+    </div>`;
+  }
+  function openDayCard(e) {
+    return eventMini(e.id);
+  }
+  function viewDiscover() {
+    const openDays = data.events.filter((e) => e.status === "open" || (e.status === "upcoming" && goingCount(e) < e.capacity));
+    const near = data.golfers.filter((g) => g.id !== ME).slice(0, 6);
+    return `<div class="view">
+      <div class="disc-hero card">
+        <h2>Find your next round</h2>
+        <p>Golf is better with a crew. Discover societies and open days near <b>North Devon</b>, or follow players to organise your own Ryder Cup.</p>
+        <label class="search big">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+          <input type="text" placeholder="Try a town, club or society…" value="North Devon" />
+        </label>
+      </div>
+
+      <p class="section-title">Societies near you</p>
+      <div class="disc-grid">${data.societies.map(societyCard).join("")}</div>
+
+      <p class="section-title">Open days — jump straight in</p>
+      <div class="open-grid">${openDays.map(openDayCard).join("")}</div>
+
+      <p class="section-title">Players near you</p>
+      <div class="people-grid">
+        ${near.map((g) => `<div class="person card" data-nav="profile" data-id="${g.id}">
+          ${av(g.id, 46)}
+          <div class="person-name">${g.name}</div>
+          <div class="person-meta">${g.club}</div>
+          <div class="person-stats"><span>hcp <b>${g.hcp}</b></span><span>${g.rec.w}W</span></div>
+          <button class="btn outline xs" data-act="follow" onclick="event.stopPropagation()">Follow</button>
+        </div>`).join("")}
+      </div>
+    </div>`;
+  }
+
+  // ===================================================================
+  //  SOCIETY PAGE
+  // ===================================================================
+  function viewSociety() {
+    const s = society(route.id);
+    const tab = route.tab || "events";
+    const events = data.events.filter((e) => e.societyId === s.id);
+    const member = isMember(s.id);
+
+    let panel = "";
+    if (tab === "events") {
+      panel = events.length
+        ? `<div class="match-list">${events.map((e) => eventMini(e.id)).join("")}</div>`
+        : `<p class="muted pad">No days out scheduled yet — be the first to organise one.</p>`;
+    } else if (tab === "members") {
+      panel = `<div class="people-grid">${s.members.map((id) => {
+        const g = golfer(id);
+        return `<div class="person card" data-nav="profile" data-id="${id}">
+          ${av(id, 46)}<div class="person-name">${g.name}${id === s.members[0] ? " ©" : ""}</div>
+          <div class="person-meta">${g.club}</div>
+          <div class="person-stats"><span>hcp <b>${g.hcp}</b></span></div>
+        </div>`;
+      }).join("")}</div>`;
+    } else {
+      panel = s.honours.length ? `<table class="honours"><thead><tr><th>Year</th><th>Event</th><th>Winner</th><th>Score</th></tr></thead>
+        <tbody>${s.honours.map((h) => `<tr><td>${h.year}</td><td>${h.event}</td><td><b>${h.winner}</b></td><td>${h.score}</td></tr>`).join("")}</tbody></table>`
+        : `<p class="muted pad">No honours on the board yet.</p>`;
+    }
+
+    return `<div class="view">
+      <div class="card profile-head">
+        <div class="cover" style="background:${grad(s.colour)}"></div>
+        <div class="ph-row">
+          <div class="big-avatar soc" style="background:${grad(s.colour)}">⛳</div>
+          <div class="ph-main">
+            <h2>${s.name}</h2>
+            <div class="muted">@${s.handle} · 📍 ${s.loc} · ${memberCount(s)} members · est. ${s.founded}</div>
+            <p class="bio">${s.about}</p>
+          </div>
+          <button class="btn ${member ? "ghost" : "primary"}" data-act="join" data-id="${s.id}">${member ? "✓ Member" : "Join society"}</button>
+        </div>
+        <div class="subtabs">
+          <button class="subtab ${tab === "events" ? "on" : ""}" data-nav="society" data-id="${s.id}" data-tab="events">Days out</button>
+          <button class="subtab ${tab === "members" ? "on" : ""}" data-nav="society" data-id="${s.id}" data-tab="members">Members</button>
+          <button class="subtab ${tab === "honours" ? "on" : ""}" data-nav="society" data-id="${s.id}" data-tab="honours">Honours</button>
+        </div>
+      </div>
+      ${panel}
+    </div>`;
+  }
+
+  // ===================================================================
+  //  PROFILE
+  // ===================================================================
+  function formPills(rec) {
+    // derive a believable recent-form streak by spreading W/H/L by ratio
+    const counts = { W: rec.w, H: rec.h, L: rec.l };
+    const total = rec.w + rec.h + rec.l;
+    const remaining = { ...counts }, taken = { W: 0, H: 0, L: 0 }, seq = [];
+    for (let i = 0; i < Math.min(5, total); i++) {
+      let best = null, bestScore = -Infinity;
+      for (const k of ["W", "H", "L"]) {
+        if (remaining[k] <= 0) continue;
+        const score = (counts[k] / total) * (i + 1) - taken[k];
+        if (score > bestScore) { bestScore = score; best = k; }
+      }
+      seq.push(best); taken[best]++; remaining[best]--;
+    }
+    return seq.map((r) => `<span class="form ${r}">${r}</span>`).join("");
+  }
+  function viewProfile() {
+    const g = golfer(route.id || ME);
+    const isMe = g.id === ME;
+    const socs = data.societies.filter((s) => s.members.includes(g.id) || (isMe && ui.joined.has(s.id)));
+    const winPct = g.rec.p ? Math.round((g.rec.w / g.rec.p) * 100) : 0;
+    return `<div class="view">
+      <div class="card profile-head">
+        <div class="cover" style="background:${grad(g.colour)}"></div>
+        <div class="ph-row">
+          <div class="big-avatar" style="background:${grad(g.colour)}">${initials(g.name)}</div>
+          <div class="ph-main">
+            <h2>${g.name}</h2>
+            <div class="muted">@${g.handle} · 📍 ${g.loc} · ${g.club}</div>
+            <div class="hcp-badge">Handicap <b>${g.hcp}</b></div>
+          </div>
+          <button class="btn ${isMe ? "outline" : "primary"}">${isMe ? "Edit profile" : "Follow"}</button>
+        </div>
+      </div>
+
+      <div class="statgrid">
+        <div class="card stat"><div class="k">Played</div><div class="v">${g.rec.p}</div></div>
+        <div class="card stat"><div class="k">Won</div><div class="v" style="color:var(--fairway)">${g.rec.w}</div></div>
+        <div class="card stat"><div class="k">Halved</div><div class="v">${g.rec.h}</div></div>
+        <div class="card stat"><div class="k">Win rate</div><div class="v">${winPct}<small>%</small></div></div>
+      </div>
+
+      <div class="card pad form-card-2">
+        <div class="row-between"><span class="section-title flat">Recent form</span><span class="form-row">${formPills(g.rec)}</span></div>
+      </div>
+
+      <p class="section-title">Societies</p>
+      <div class="disc-grid">${socs.length ? socs.map(societyCard).join("") : '<p class="muted pad">Not in any societies yet.</p>'}</div>
+    </div>`;
+  }
+
+  // ===================================================================
+  //  EVENT DETAIL  (RSVP + live Ryder Cup scoreboard)
+  // ===================================================================
+  function playerRowTeam(id, colour) {
+    const g = golfer(id);
+    return `<div class="player">
+      <span class="avatar ${colour}">${initials(g.name)}</span>
+      <span><span class="pname">${g.name}${g.captain ? " ©" : ""}</span><br/><span class="ph">hcp ${g.hcp}</span></span>
+    </div>`;
+  }
+  function pairCell(ids, colour, side, win) {
+    return `<div class="pair ${side} ${win ? "win" : ""}">${ids.map((id) => playerRowTeam(id, colour)).join("")}</div>`;
+  }
+  function midCell(m, idx) {
+    let inner;
+    if (m.status === "final") {
+      const cls = m.winner === "blue" ? "blue" : m.winner === "red" ? "red" : "halved";
+      inner = `<span class="badge final">Final</span><span class="res ${cls}">${m.margin}</span>`;
+    } else if (m.status === "live") {
+      inner = `<span class="badge live">Live</span><span class="res halved">${m.state || ""}</span><span class="thru">thru ${m.thru}</span>`;
+    } else {
+      inner = `<span class="badge soon">Tee</span><span class="thru">${m.tee || "TBC"}</span>`;
+    }
+    return `<div class="mid" data-act="cycle" data-mi="${idx}" title="Click to set the result">${inner}</div>`;
+  }
+  function matchCard(m, idx) {
+    return `<div class="match">${pairCell(m.blue, "blue", "left", m.winner === "blue")}${midCell(m, idx)}${pairCell(m.red, "red", "right", m.winner === "red")}</div>`;
+  }
+  function pointsFor(ev, team) {
+    let p = 0;
+    ev.sessions.forEach((s) => s.matches.forEach((m) => {
+      if (m.winner === team) p += 1; else if (m.winner === "halved") p += 0.5;
+    }));
+    return p;
   }
   function sessionPoints(s) {
     let b = 0, r = 0;
     s.matches.forEach((m) => {
-      if (m.winner === "blue") b += 1;
-      else if (m.winner === "red") r += 1;
+      if (m.winner === "blue") b++; else if (m.winner === "red") r++;
       else if (m.winner === "halved") { b += 0.5; r += 0.5; }
     });
     return { b, r };
   }
-  const countBy = (status) =>
-    state.sessions.reduce(
-      (n, s) => n + s.matches.filter((m) => m.status === status).length, 0);
 
-  // ---- player / pairing markup ------------------------------------
-  function playerRow(id, colour) {
-    const p = playerById(id);
-    return `<div class="player">
-      <span class="avatar ${colour}">${initials(p.name)}</span>
-      <span>
-        <span class="pname">${p.name}${p.captain ? " ©" : ""}</span><br/>
-        <span class="ph">hcp ${p.hcp}</span>
-      </span>
-    </div>`;
-  }
-  function pairCell(ids, colour, side, isWinner) {
-    return `<div class="pair ${side} ${isWinner ? "win" : ""}">
-      ${ids.map((id) => playerRow(id, colour)).join("")}
-    </div>`;
-  }
-  function midCell(m) {
-    if (m.status === "final") {
-      const cls = m.winner === "blue" ? "blue" : m.winner === "red" ? "red" : "halved";
-      return `<div class="mid">
-        <span class="badge final">Final</span>
-        <span class="res ${cls}">${m.margin}</span>
-      </div>`;
-    }
-    if (m.status === "live") {
-      return `<div class="mid">
-        <span class="badge live">Live</span>
-        <span class="res halved">${m.state || ""}</span>
-        <span class="thru">thru ${m.thru}</span>
-      </div>`;
-    }
-    return `<div class="mid">
-      <span class="badge soon">Tee</span>
-      <span class="thru">${m.tee || "TBC"}</span>
-    </div>`;
-  }
-  function matchCard(m) {
-    return `<div class="match">
-      ${pairCell(m.blue, "blue", "left", m.winner === "blue")}
-      ${midCell(m)}
-      ${pairCell(m.red, "red", "right", m.winner === "red")}
-    </div>`;
-  }
+  function viewEvent() {
+    const e = event(route.id);
+    const s = society(e.societyId);
+    const going = isGoing(e.id);
 
-  // ---- views -------------------------------------------------------
-  function viewScoreboard() {
-    const b = pointsFor("blue"), r = pointsFor("red");
-    const total = totalMatches();
-    const target = total / 2 + 0.5;
-    const blueW = (b / total) * 100, redW = (r / total) * 100;
-    const targetPct = (target / total) * 100;
-    const { blue, red } = state.teams;
-
-    const sessions = state.sessions.map((s) => {
-      const sp = sessionPoints(s);
-      return `<section class="session">
-        <div class="session-head">
-          <h3>${s.name}</h3>
-          <span class="fmt">${s.format}</span>
-          <span class="pts"><span class="b">${fmtPts(sp.b)}</span> – <span class="r">${fmtPts(sp.r)}</span></span>
+    // --- upcoming / open: RSVP-focused layout ---
+    if (e.status !== "live" && e.status !== "complete") {
+      const filled = goingCount(e), pct = Math.round((filled / e.capacity) * 100);
+      return `<div class="view">
+        <div class="card profile-head">
+          <div class="cover" style="background:${grad(s.colour)}"></div>
+          <div class="ph-row">
+            <div class="big-avatar soc" style="background:${grad(s.colour)}">⛳</div>
+            <div class="ph-main">
+              <h2>${e.title}</h2>
+              <div class="muted">${e.date} · ${e.venue}</div>
+              <div class="muted">Hosted by <a class="link" data-nav="society" data-id="${s.id}">${s.name}</a></div>
+            </div>
+            <button class="btn ${going ? "ghost" : "primary"}" data-act="rsvp" data-id="${e.id}">${going ? "✓ You're going" : "Join this day"}</button>
+          </div>
         </div>
-        <div class="match-list">${s.matches.map(matchCard).join("")}</div>
+
+        <div class="card pad">
+          <p class="post-text">${e.note || ""}</p>
+          <div class="chips">${(e.formats || []).map((f) => `<span class="chip">${f}</span>`).join("")}</div>
+          <div class="em-fill big"><span style="width:${pct}%;background:${grad(s.colour)}"></span></div>
+          <div class="muted" style="margin-top:8px">${filled} of ${e.capacity} spots filled — ${e.capacity - filled} left</div>
+        </div>
+
+        <p class="section-title">Who's going (${filled})</p>
+        <div class="people-grid">${e.attendees.map((id) => `<div class="person card" data-nav="profile" data-id="${id}">
+          ${av(id, 46)}<div class="person-name">${golfer(id).name}</div><div class="person-meta">hcp ${golfer(id).hcp}</div></div>`).join("")}
+        </div>
+      </div>`;
+    }
+
+    // --- live: full scoreboard ---
+    const b = pointsFor(e, "blue"), r = pointsFor(e, "red");
+    const total = e.sessions.reduce((n, x) => n + x.matches.length, 0);
+    const target = total / 2 + 0.5;
+    const blueW = (b / total) * 100, redW = (r / total) * 100, targetPct = (target / total) * 100;
+    const T = e.teams;
+    let idx = -1;
+    const sessions = e.sessions.map((sn) => {
+      const sp = sessionPoints(sn);
+      const cards = sn.matches.map((m) => { idx++; return matchCard(m, idx); }).join("");
+      return `<section class="session">
+        <div class="session-head"><h3>${sn.name}</h3><span class="fmt">${sn.format}</span>
+          <span class="pts"><span class="b">${fmtPts(sp.b)}</span> – <span class="r">${fmtPts(sp.r)}</span></span></div>
+        <div class="match-list">${cards}</div>
       </section>`;
     }).join("");
 
     return `<div class="view">
       <section class="hero">
-        <div class="event-meta">
-          <b>${state.event.name}</b><span class="sep">•</span>
-          ${state.event.venue}<span class="sep">•</span>
-          ${state.event.date}
-        </div>
+        <div class="event-meta"><a class="link2" data-nav="society" data-id="${s.id}">${s.name}</a><span class="sep">•</span>${e.venue}<span class="sep">•</span>${e.date}</div>
         <div class="score-row">
-          <div class="team-side left">
-            <span class="team-name"><span class="team-chip blue"></span>${blue.name}</span>
-            <span class="team-captain">Captain · ${blue.captain}</span>
-            <span class="team-score">${fmtPts(b)}</span>
-          </div>
-          <div class="score-mid">
-            <div class="vs">VS</div>
-            <div class="target"><b>${fmtPts(target)}</b><br/>to lift the cup</div>
-          </div>
-          <div class="team-side right">
-            <span class="team-name"><span class="team-chip red"></span>${red.name}</span>
-            <span class="team-captain">Captain · ${red.captain}</span>
-            <span class="team-score">${fmtPts(r)}</span>
-          </div>
+          <div class="team-side left"><span class="team-name"><span class="team-chip blue"></span>${T.blue.name}</span><span class="team-captain">Captain · ${T.blue.captain}</span><span class="team-score">${fmtPts(b)}</span></div>
+          <div class="score-mid"><div class="vs">VS</div><div class="target"><b>${fmtPts(target)}</b><br/>to lift the cup</div></div>
+          <div class="team-side right"><span class="team-name"><span class="team-chip red"></span>${T.red.name}</span><span class="team-captain">Captain · ${T.red.captain}</span><span class="team-score">${fmtPts(r)}</span></div>
         </div>
         <div class="progress">
-          <div class="progress-track">
-            <span class="target-line" style="left:${targetPct}%"></span>
-            <span class="target-flag" style="left:${targetPct}%">⛳ ${fmtPts(target)}</span>
-            <span class="fill fill-blue" style="width:${blueW}%"></span>
-            <span class="fill fill-red" style="width:${redW}%"></span>
-          </div>
-          <div class="progress-legend">
-            <span>${blue.name} — ${fmtPts(b)} pts</span>
-            <span>${red.name} — ${fmtPts(r)} pts</span>
-          </div>
+          <div class="progress-track"><span class="target-line" style="left:${targetPct}%"></span><span class="target-flag" style="left:${targetPct}%">⛳ ${fmtPts(target)}</span><span class="fill fill-blue" style="width:${blueW}%"></span><span class="fill fill-red" style="width:${redW}%"></span></div>
+          <div class="progress-legend"><span>${T.blue.name} — ${fmtPts(b)} pts</span><span>${T.red.name} — ${fmtPts(r)} pts</span></div>
         </div>
       </section>
-
-      <div class="statgrid">
-        <div class="card stat"><div class="k">Matches played</div><div class="v">${countBy("final")}<small> / ${total}</small></div></div>
-        <div class="card stat"><div class="k">Out on course</div><div class="v">${countBy("live")}<small> live</small></div></div>
-        <div class="card stat"><div class="k">Still to tee</div><div class="v">${countBy("soon")}<small> matches</small></div></div>
-        <div class="card stat"><div class="k">Points to win</div><div class="v">${fmtPts(Math.max(0, target - Math.max(b, r)))}<small> needed</small></div></div>
+      <div class="going-strip card">
+        <span class="muted">${goingCount(e)} playing today</span>${avatarStack(e.attendees, 10, 30)}
+        <button class="btn ${going ? "ghost" : "primary"} sm" data-act="rsvp" data-id="${e.id}">${going ? "✓ Going" : "Join"}</button>
       </div>
-
+      <p class="muted pad-x">Tap any result to update it on the day — the scoreboard recalculates instantly.</p>
       ${sessions}
     </div>`;
   }
 
-  function viewMatches() {
-    const blocks = state.sessions.map((s) => {
-      const sp = sessionPoints(s);
-      return `<section class="session">
-        <div class="session-head">
-          <h3>${s.name}</h3>
-          <span class="fmt">${s.format} · ${s.blurb}</span>
-          <span class="pts"><span class="b">${fmtPts(sp.b)}</span> – <span class="r">${fmtPts(sp.r)}</span></span>
-        </div>
-        <div class="match-list">${s.matches.map(matchCard).join("")}</div>
-      </section>`;
-    }).join("");
+  // ===================================================================
+  //  MY DAYS
+  // ===================================================================
+  function viewEvents() {
+    const mine = data.events.filter((e) => isGoing(e.id));
+    const live = mine.filter((e) => e.status === "live");
+    const up = mine.filter((e) => e.status === "upcoming" || e.status === "open");
     return `<div class="view">
-      <p class="section-title">Match schedule</p>
-      <p class="muted" style="margin:-6px 2px 0;max-width:60ch">Tap any result to update it on the day — the scoreboard and the cup race recalculate instantly.</p>
-      ${blocks}
+      ${live.length ? `<p class="section-title">Live now</p><div class="match-list">${live.map((e) => eventMini(e.id)).join("")}</div>` : ""}
+      <p class="section-title">Your upcoming days</p>
+      <div class="match-list">${up.length ? up.map((e) => eventMini(e.id)).join("") : '<p class="muted pad">Nothing booked — head to Discover to find a day out.</p>'}</div>
     </div>`;
   }
 
-  function viewTeams() {
-    const card = (teamId) => {
-      const t = state.teams[teamId];
-      const roster = state.players.filter((p) => p.team === teamId);
-      const pts = pointsFor(teamId);
-      const avg = (roster.reduce((n, p) => n + p.hcp, 0) / roster.length).toFixed(1);
-      const rows = roster
-        .sort((a, b) => a.hcp - b.hcp)
-        .map((p, i) => `<li>
-          <span class="num">${i + 1}</span>
-          <span class="rname">${p.name}</span>
-          ${p.captain ? '<span class="tag">Captain</span>' : ""}
-          <span class="hcp">hcp <b>${p.hcp}</b></span>
-        </li>`).join("");
-      return `<div class="card team-card ${t.colour}">
-        <div class="th">
-          <div>
-            <h3>${t.name}</h3>
-            <div class="cap">Captain · ${t.captain} · avg hcp ${avg}</div>
-          </div>
-          <div class="pts">${fmtPts(pts)}</div>
-        </div>
-        <ul class="roster">${rows}</ul>
-      </div>`;
-    };
-    return `<div class="view">
-      <p class="section-title">The line-ups · ${state.players.length} golfers</p>
-      <div class="teams-grid">${card("blue")}${card("red")}</div>
-    </div>`;
-  }
-
-  function viewCreate() {
-    return `<div class="view create-wrap">
-      <form class="card form-card" id="createForm" onsubmit="return false">
-        <h2>Start a new day out</h2>
-        <p class="lead">Set the scene, pick your formats, and Ryder builds the match sheet and live scoreboard for you.</p>
-
-        <div class="field">
-          <label>Event name</label>
-          <input type="text" value="The Heathland Cup" />
-        </div>
-        <div class="field-row">
-          <div class="field"><label>Course</label><input type="text" value="Saunton — East" /></div>
-          <div class="field"><label>Date</label><input type="text" value="13 June 2026" /></div>
-        </div>
-        <div class="field-row">
-          <div class="field"><label>Team A</label><input type="text" value="Team Azure" /></div>
-          <div class="field"><label>Team B</label><input type="text" value="Team Crimson" /></div>
-        </div>
-        <div class="field"><label>Players per team</label>
-          <select><option>4</option><option>5</option><option selected>6</option><option>8</option><option>12</option></select>
-        </div>
-
-        <label style="display:block;font-size:12.5px;font-weight:700;color:var(--ink-soft);margin:6px 0 8px">Sessions</label>
-        <div class="fmt-options">
-          <label class="fmt-opt"><input type="checkbox" checked />
-            <span><span class="ft">Fourballs</span><br/><span class="fd">Pairs, better ball — a great opener.</span></span></label>
-          <label class="fmt-opt"><input type="checkbox" checked />
-            <span><span class="ft">Foursomes</span><br/><span class="fd">Alternate shot — the test of a partnership.</span></span></label>
-          <label class="fmt-opt"><input type="checkbox" checked />
-            <span><span class="ft">Singles</span><br/><span class="fd">Everyone out, one point each — the decider.</span></span></label>
-        </div>
-
-        <div style="margin-top:18px"><button class="btn primary" type="button" onclick="alert('In the full app this creates the event, generates pairings and invites the players.')">Create event &amp; generate match sheet</button></div>
-      </form>
-
-      <aside class="card preview-card">
-        <h3>Your weekend at a glance</h3>
-        <ul class="timeline">
-          <li><div class="tl-t">Friday · Fourballs</div><div class="tl-d">3 matches · 3 points up for grabs</div></li>
-          <li><div class="tl-t">Saturday · Foursomes</div><div class="tl-d">3 matches · 3 points up for grabs</div></li>
-          <li><div class="tl-t">Sunday · Singles</div><div class="tl-d">6 matches · 6 points up for grabs</div></li>
-          <li><div class="tl-t">12 total points · 6½ to win</div><div class="tl-d">Holders retain on a tie</div></li>
-        </ul>
-      </aside>
-    </div>`;
-  }
-
-  // ---- render ------------------------------------------------------
+  // ===================================================================
+  //  ROUTER + RENDER
+  // ===================================================================
   const VIEWS = {
-    scoreboard: viewScoreboard,
-    matches: viewMatches,
-    teams: viewTeams,
-    create: viewCreate,
+    feed: viewFeed, discover: viewDiscover, events: viewEvents,
+    profile: viewProfile, society: viewSociety, event: viewEvent,
   };
-
+  function navTab() {
+    return { feed: "feed", discover: "discover", events: "events", profile: "feed", society: "feed", event: "feed" }[route.view];
+  }
   function render() {
-    $("#main").innerHTML = VIEWS[state.view]();
-    document.querySelectorAll(".tab").forEach((t) =>
-      t.classList.toggle("is-active", t.dataset.view === state.view));
-    $("#eventPillText").textContent =
-      state.event.status === "live" ? "Live now" : state.event.name;
-    $("#footMeta").textContent = `${state.event.society} · ${state.event.date}`;
-    bindMatchEditing();
+    document.querySelector("#main").innerHTML = (VIEWS[route.view] || viewFeed)();
+    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.nav === navTab()));
+    const m = me();
+    const a = document.querySelector("#meAvatar");
+    a.style.background = grad(m.colour); a.textContent = initials(m.name);
+    document.querySelector("#footMeta").textContent = `Signed in as ${m.name} · @${m.handle}`;
+    window.scrollTo({ top: 0 });
   }
+  function nav(view, id, tab) { route = { view, id: id || null, tab: tab || null }; render(); }
 
-  // ---- on-the-day result editing ----------------------------------
-  // Cycle a match result by clicking it: blue win -> red win -> halved -> open
-  function bindMatchEditing() {
-    if (state.view !== "matches") return;
-    const cards = document.querySelectorAll(".match .mid");
-    cards.forEach((mid, idx) => {
-      mid.style.cursor = "pointer";
-      mid.title = "Click to set the result";
-      mid.addEventListener("click", () => cycleResult(idx));
-    });
-  }
-  function flatMatches() {
+  // ---- delegated events -------------------------------------------
+  document.addEventListener("click", (ev) => {
+    const navEl = ev.target.closest("[data-nav]");
+    const actEl = ev.target.closest("[data-act]");
+
+    if (actEl) {
+      const act = actEl.dataset.act;
+      if (act === "join") {
+        const id = actEl.dataset.id;
+        if (society(id).members.includes(ME)) return; // already a core member
+        ui.joined.has(id) ? ui.joined.delete(id) : ui.joined.add(id);
+        persist(); render(); return;
+      }
+      if (act === "rsvp") {
+        const id = actEl.dataset.id;
+        if (event(id).attendees.includes(ME)) return;
+        ui.going.has(id) ? ui.going.delete(id) : ui.going.add(id);
+        persist(); render(); return;
+      }
+      if (act === "react") {
+        const p = actEl.dataset.post, e = actEl.dataset.emoji;
+        ui.react[p] = ui.react[p] === e ? null : e;
+        persist(); render(); return;
+      }
+      if (act === "cycle") {
+        cycleResult(+actEl.dataset.mi); return;
+      }
+      if (act === "follow") { actEl.textContent = actEl.textContent === "Follow" ? "Following" : "Follow"; actEl.classList.toggle("ghost"); return; }
+      if (act === "compose") { alert("In the full app this opens the composer — share a result, post photos, or spin up a new Ryder Cup day."); return; }
+    }
+
+    if (navEl) {
+      ev.preventDefault();
+      nav(navEl.dataset.nav, navEl.dataset.id, navEl.dataset.tab);
+    }
+  });
+
+  document.querySelector("#newDay").addEventListener("click", () =>
+    alert("In the full app this launches the day-out builder: pick a course, invite your society, choose your formats, and Ryder generates the match sheet."));
+
+  // ---- on-the-day result editing for the live event ---------------
+  function liveEventMatches() {
+    const e = event(route.id);
     const out = [];
-    state.sessions.forEach((s) => s.matches.forEach((m) => out.push(m)));
+    e.sessions.forEach((s) => s.matches.forEach((m) => out.push(m)));
     return out;
   }
   function cycleResult(idx) {
-    const m = flatMatches()[idx];
+    const m = liveEventMatches()[idx];
     const order = [
       { status: "final", winner: "blue", margin: "2 & 1" },
       { status: "final", winner: "red", margin: "2 & 1" },
       { status: "final", winner: "halved", margin: "AS" },
       { status: "soon", winner: null, tee: "—" },
     ];
-    const cur = order.findIndex(
-      (o) => o.status === m.status && o.winner === m.winner);
-    const next = order[(cur + 1) % order.length];
-    Object.assign(m, { thru: undefined, state: undefined, tee: m.tee }, next);
-    persist();
+    const cur = order.findIndex((o) => o.status === m.status && o.winner === m.winner);
+    Object.assign(m, { thru: undefined, state: undefined }, order[(cur + 1) % order.length]);
     render();
   }
-
-  // ---- nav ---------------------------------------------------------
-  $("#tabs").addEventListener("click", (e) => {
-    const btn = e.target.closest(".tab");
-    if (!btn) return;
-    state.view = btn.dataset.view;
-    render();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
 
   render();
 })();

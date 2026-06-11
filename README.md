@@ -1,29 +1,37 @@
 # ⛳ Ryder
 
-**Bring golfers together to organise Ryder Cup–style days out.**
+**The social home for golf societies & clubs — where golfers meet, organise and play.**
 
-Ryder takes a group of mates (or a whole society), splits them into two teams
-with captains, builds the classic Ryder Cup match schedule, and runs a **live
-scoreboard** that tracks the race to lift the cup.
+Ryder is a social network built around organising **Ryder Cup–style days out**.
+Find golfers and societies near you, join up, organise a day, RSVP, then play —
+with a live team scoreboard and a feed full of results, photos and banter.
 
 > This is an early, self-contained prototype — a single-page web app with no
-> build step and no external dependencies, seeded with a sample event so you
-> can see exactly how a day plays out.
+> build step and no external dependencies, seeded with sample golfers,
+> societies and a half-played event so you can feel how the whole thing works.
+
+## The loop
+
+**Discover → Join → Organise → Meet up & play → Share**
 
 ## What it does today
 
-- **Live scoreboard** — big team totals, the "magic number" to win, and a
-  progress bar racing each side toward the cup.
-- **Match schedule** across the three classic formats:
-  - **Fourballs** (pairs, better ball)
-  - **Foursomes** (pairs, alternate shot)
-  - **Singles** (one-on-one)
-- **Teams & line-ups** — rosters with captains, playing handicaps and team
-  handicap averages.
-- **On-the-day scoring** — on the *Matches* tab, click any result to set it;
-  the scoreboard and cup race recalculate instantly.
-- **New event flow** — a guided form to set the course, teams and formats.
-- Everything persists locally in the browser (`localStorage`).
+- **Feed** — a social timeline of event invites, final results, course photos
+  and banter, with emoji reactions and comments.
+- **Discover** — find **societies near you**, **open days** you can jump
+  straight into, and **players** in your area to follow.
+- **Society pages** — cover, members, upcoming days out and an **honours board**
+  of past winners; one tap to join.
+- **Profiles** — handicap, home club, win/loss record, recent form and the
+  societies a golfer belongs to.
+- **Events** — RSVP to a day out, see who's going, and follow the **live Ryder
+  Cup scoreboard**:
+  - The three classic formats — **Fourballs**, **Foursomes**, **Singles**
+  - Big team totals, the "magic number" to win, and a cup race
+  - Tap any match result to update it on the day; everything recalculates live
+- **My days** — your live and upcoming events in one place.
+
+Joins, RSVPs and reactions persist locally in the browser (`localStorage`).
 
 ## Run it
 
@@ -39,18 +47,19 @@ python3 -m http.server 8000
 
 | File | Purpose |
 |------|---------|
-| `index.html` | App shell + top navigation |
+| `index.html` | App shell, top bar, search & navigation |
 | `styles.css` | Design system and all styling |
-| `app.js` | State, rendering and interactions |
-| `data.js` | Sample event (a half-played day out) |
+| `app.js` | State, client-side router, views and interactions |
+| `data.js` | Sample golfers, societies, events and feed |
 
-## Where it could go next
+## Where it goes next
 
-- Accounts, real invites (WhatsApp / email) and RSVPs
-- Automatic, handicap-balanced pairings and a captain's draft
+- Accounts, real invites (WhatsApp/email) and notifications
+- A proper composer: post results, upload photos, spin up a day out
+- A day-out builder: pick a course, invite the society, auto-balance pairings
 - Hole-by-hole live scoring entered from the course
-- Course/handicap database and society history with past results
-- A backend + shared real-time scoreboard so everyone watches the same screen
+- Maps & location search for societies and open days near you
+- A backend with a shared real-time scoreboard everyone watches together
 
 ---
 
