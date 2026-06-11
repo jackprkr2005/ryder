@@ -11,22 +11,28 @@
 
   // UI state that the user can change (persisted)
   const ui = Object.assign(
-    { joined: [], going: [], react: {}, follows: [], posts: [], events: [], comments: {} },
+    { joined: [], going: [], react: {}, follows: [], posts: [], events: [], comments: {}, sheets: {} },
     (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } })()
   );
   ui.joined = new Set(ui.joined);
   ui.going = new Set(ui.going);
   ui.follows = new Set(ui.follows);
   ui.comments = ui.comments || {};
+  ui.sheets = ui.sheets || {};
   const persist = () =>
     localStorage.setItem(STORE, JSON.stringify({
       joined: [...ui.joined], going: [...ui.going], react: ui.react,
-      follows: [...ui.follows], posts: ui.posts, events: ui.events, comments: ui.comments,
+      follows: [...ui.follows], posts: ui.posts, events: ui.events, comments: ui.comments, sheets: ui.sheets,
     }));
 
   // merge any user-created content back into the working data set
   (ui.events || []).forEach((e) => { if (!data.events.some((x) => x.id === e.id)) data.events.push(e); });
   data.feed = [...(ui.posts || []), ...data.feed];
+  // re-apply any locked-in match sheets (captain's draft) onto their events
+  Object.entries(ui.sheets).forEach(([eid, sheet]) => {
+    const e = data.events.find((x) => x.id === eid);
+    if (e) { e.teams = sheet.teams; e.sessions = sheet.sessions; e.status = "live"; e.when = "Live now"; }
+  });
 
   let route = { view: "feed", id: null, tab: null };
 
@@ -434,9 +440,10 @@
     const s = society(e.societyId);
     const going = isGoing(e.id);
 
-    // --- upcoming / open: RSVP-focused layout ---
-    if (e.status !== "live" && e.status !== "complete") {
+    // --- upcoming / open: RSVP-focused layout (no match sheet yet) ---
+    if (!e.sessions) {
       const filled = goingCount(e), pct = Math.round((filled / e.capacity) * 100);
+      const canBuild = filled >= 4;
       return `<div class="view">
         <div class="card profile-head">
           <div class="cover" style="background:${grad(s.colour)}"></div>
@@ -458,8 +465,16 @@
           <div class="muted" style="margin-top:8px">${filled} of ${e.capacity} spots filled — ${e.capacity - filled} left</div>
         </div>
 
+        <div class="card captain-cta">
+          <div>
+            <div class="cc-eyebrow">Captain's room</div>
+            <div class="cc-line">Auto-build two balanced teams and a full Ryder Cup match sheet from who's in.</div>
+          </div>
+          <button class="btn primary" data-act="build-sheet" data-id="${e.id}" ${canBuild ? "" : "disabled"}>Build the match sheet</button>
+        </div>
+
         <p class="section-title">Who's going (${filled})</p>
-        <div class="people-grid">${e.attendees.map((id) => `<div class="person card" data-nav="profile" data-id="${id}">
+        <div class="people-grid">${attendeesOf(e).map((id) => `<div class="person card" data-nav="profile" data-id="${id}">
           ${av(id, 46)}<div class="person-name">${golfer(id).name}</div><div class="person-meta">hcp ${golfer(id).hcp}</div></div>`).join("")}
         </div>
       </div>`;
@@ -537,19 +552,19 @@
     </g>
   </svg>`;
 
-  function coursePin(c, sel) {
-    return `<button class="pin ${sel === c.id ? "sel" : ""}" style="left:${c.x}%;top:${c.y}%" data-nav="courses" data-id="${c.id}" title="${c.name}">
+  function coursePin(c) {
+    return `<button class="pin" style="left:${c.x}%;top:${c.y}%" data-act="focus-course" data-id="${c.id}" title="${c.name}">
       <span class="pin-dot" style="background:${solid(c.colour)}"></span>
       <span class="pin-label">${c.name.replace(/ Golf Club| Golf$/, "")}</span>
     </button>`;
   }
 
-  function courseCard(c, sel) {
+  function courseCard(c) {
     const players = playersAtCourse(c);
     const socs = societiesAtCourse(c);
     const days = daysAtCourse(c);
     const firsts = players.slice(0, 2).map((p) => p.name.split(" ")[0]).join(", ");
-    return `<div class="card course-card ${sel === c.id ? "selected" : ""}" id="course-${c.id}" data-nav="courses" data-id="${c.id}">
+    return `<div class="card course-card" id="course-${c.id}" data-act="focus-course" data-id="${c.id}">
       <div class="cc-head">
         <span class="cc-marker" style="background:${solid(c.colour)}">${mono(c.name)}</span>
         <div class="cc-id">
@@ -576,22 +591,217 @@
   }
 
   function viewCourses() {
-    const sel = route.id;
-    const pins = data.courses.map((c) => coursePin(c, sel)).join("");
-    const cards = data.courses.map((c) => courseCard(c, sel)).join("");
+    const cards = data.courses.map((c) => courseCard(c)).join("");
     return `<div class="view">
       <div class="card disc-hero">
         <h2>Find a course to play</h2>
         <p>Browse the clubs near you, see who already plays where, and start a Ryder Cup day at any of them. Tap a marker to jump to a club.</p>
       </div>
-      <div class="coursemap card">
-        ${MAP_SVG}
-        <div class="map-pins">${pins}</div>
-        <span class="map-badge">North Devon</span>
-      </div>
+      <div id="coursemap" class="coursemap card"></div>
       <p class="section-title">Clubs near you · ${data.courses.length}</p>
       <div class="course-list">${cards}</div>
     </div>`;
+  }
+
+  // ---- real (Leaflet/OSM) map with illustrated fallback ----
+  let leafletMap = null, courseMarkers = {};
+  function renderFallbackMap(el) {
+    if (leafletMap) { try { leafletMap.remove(); } catch (e) {} leafletMap = null; }
+    el.className = "coursemap card is-illustrated";
+    el.innerHTML = `${MAP_SVG}<div class="map-pins">${data.courses.map(coursePin).join("")}</div><span class="map-badge">North Devon</span>`;
+  }
+  function coursePopup(c) {
+    const players = playersAtCourse(c).length;
+    return `<div class="cmpop">
+      <div class="cmpop-type">${c.type} · ${c.holes} holes · par ${c.par}</div>
+      <div class="cmpop-name">${c.name}</div>
+      <div class="cmpop-meta">${c.town} · ${players} of your network play here</div>
+      <button class="btn primary xs" data-act="organise-here" data-id="${c.id}">Organise a day here</button>
+    </div>`;
+  }
+  function initCourseMap() {
+    const el = document.getElementById("coursemap");
+    if (!el) return;
+    if (!window.L) { renderFallbackMap(el); return; }
+    if (leafletMap) { try { leafletMap.remove(); } catch (e) {} leafletMap = null; }
+    courseMarkers = {};
+    el.innerHTML = "";
+    const map = L.map(el, { scrollWheelZoom: false });
+    leafletMap = map;
+    map.fitBounds(data.courses.map((c) => [c.lat, c.lng]), { padding: [38, 38] });
+    let loaded = 0;
+    const tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18, attribution: "&copy; OpenStreetMap",
+    });
+    tiles.on("tileload", () => { loaded++; });
+    tiles.addTo(map);
+    data.courses.forEach((c) => {
+      const icon = L.divIcon({ className: "leaf-pin-wrap", html: `<span class="leaf-pin" style="background:${solid(c.colour)}"></span>`, iconSize: [20, 20], iconAnchor: [10, 10] });
+      const mk = L.marker([c.lat, c.lng], { icon }).addTo(map);
+      mk.bindPopup(coursePopup(c), { className: "course-popup", closeButton: false });
+      mk.on("click", () => focusCourse(c.id, { fromMap: true }));
+      courseMarkers[c.id] = mk;
+    });
+    setTimeout(() => map.invalidateSize(), 60);
+    // if no tiles arrive (offline / blocked network), drop back to the illustrated map
+    setTimeout(() => { if (loaded === 0 && leafletMap === map) renderFallbackMap(el); }, 2600);
+  }
+  function focusCourse(id, opts = {}) {
+    document.querySelectorAll(".course-card").forEach((el) => el.classList.toggle("selected", el.id === "course-" + id));
+    const card = document.getElementById("course-" + id);
+    if (card && !opts.fromCard) card.scrollIntoView({ behavior: "smooth", block: "center" });
+    const c = course(id);
+    if (leafletMap && courseMarkers[id] && !opts.fromMap) {
+      leafletMap.panTo([c.lat, c.lng]);
+      courseMarkers[id].openPopup();
+    }
+  }
+
+  // ===================================================================
+  //  CAPTAIN'S DRAFT — pairing & match-up logic (the "Ryder Cup" engine)
+  // ===================================================================
+  let draftSeed = 1;
+  const byHcp = (a, b) => golfer(a).hcp - golfer(b).hcp;
+  const attendeesOf = (e) => [...new Set([...(e.attendees || []), ...(ui.going.has(e.id) ? [ME] : [])])];
+
+  function rng(seed) { let s = (seed * 2654435761) % 2147483647 || 7; return () => (s = (s * 48271) % 2147483647) / 2147483647; }
+  function teeTime(i) { const t = 8 * 60 + 30 + i * 10; return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; }
+
+  // balanced two-team split: snake draft by handicap, lightly varied by seed
+  function snakeDraft(ids, rnd) {
+    const s = [...ids].sort(byHcp);
+    // only swap adjacent players of similar ability, so teams stay balanced but vary on reshuffle
+    for (let i = 0; i < s.length - 1; i++)
+      if (rnd() < 0.5 && Math.abs(golfer(s[i]).hcp - golfer(s[i + 1]).hcp) <= 2) { const t = s[i]; s[i] = s[i + 1]; s[i + 1] = t; }
+    const blue = [], red = [], pat = [0, 1, 1, 0];
+    s.forEach((id, i) => (pat[i % 4] === 0 ? blue : red).push(id));
+    return { blue, red };
+  }
+  // pair players within a team: "anchor" = strongest+weakest, "adjacent" = similar ability
+  function pairTeam(ids, strategy) {
+    const s = [...ids].sort(byHcp), pairs = [];
+    if (strategy === "anchor") { let i = 0, j = s.length - 1; while (i < j) { pairs.push([s[i], s[j]]); i++; j--; } }
+    else { for (let i = 0; i + 1 < s.length; i += 2) pairs.push([s[i], s[i + 1]]); }
+    const reserve = s.length % 2 ? [s[(s.length - 1) / 2 | 0]] : [];
+    // a clean reserve for odd teams = the middle player
+    return { pairs, reserve: s.length % 2 ? [s[s.length - 1]] : [] };
+  }
+  const pairRating = (ids, format) => {
+    const h = ids.map((id) => golfer(id).hcp);
+    if (ids.length === 1) return h[0];
+    return format === "Foursomes" ? 0.5 * (h[0] + h[1]) : Math.min(...h); // fourball ≈ low ball
+  };
+  function matchStrokes(blueIds, redIds, format) {
+    const allow = format === "Fourball" ? 0.9 : 1; // foursomes rating already halved
+    const bR = pairRating(blueIds, format), rR = pairRating(redIds, format);
+    const diff = Math.round(Math.abs(bR - rR) * allow);
+    return { diff, recv: bR > rR ? "blue" : rR > bR ? "red" : null };
+  }
+
+  function buildMatchSheet(playerIds, formats, seed) {
+    const rnd = rng(seed);
+    const { blue, red } = snakeDraft(playerIds, rnd);
+    const capOf = (t) => golfer([...t].sort(byHcp)[0]).name;
+    const teams = {
+      blue: { id: "blue", name: "Team Azure", colour: "blue", captain: capOf(blue) },
+      red:  { id: "red",  name: "Team Crimson", colour: "red", captain: capOf(red) },
+    };
+    const sessions = [];
+    formats.forEach((f, si) => {
+      if (f === "Singles") {
+        const bs = [...blue].sort(byHcp), rs = [...red].sort(byHcp), n = Math.min(bs.length, rs.length), matches = [];
+        for (let i = 0; i < n; i++) matches.push({ blue: [bs[i]], red: [rs[i]], status: "soon", winner: null, tee: teeTime(i), strokes: matchStrokes([bs[i]], [rs[i]], "Singles") });
+        const reserve = [...bs.slice(n), ...rs.slice(n)];
+        sessions.push({ id: "g" + si, name: "Singles", format: "Singles match play", blurb: "Everyone out — one point each.", matches, reserve });
+      } else {
+        const fmt = f === "Foursomes" ? "Foursomes" : "Fourball";
+        const label = f === "Foursomes" ? "Foursomes (alternate shot)" : "Fourball (better ball)";
+        const strat = f === "Foursomes" ? "adjacent" : "anchor";
+        const bp = pairTeam(blue, strat), rp = pairTeam(red, strat);
+        const bSorted = bp.pairs.sort((a, b) => pairRating(a, fmt) - pairRating(b, fmt));
+        const rSorted = rp.pairs.sort((a, b) => pairRating(a, fmt) - pairRating(b, fmt));
+        const n = Math.min(bSorted.length, rSorted.length), matches = [];
+        for (let i = 0; i < n; i++) matches.push({ blue: bSorted[i], red: rSorted[i], status: "soon", winner: null, tee: teeTime(i), strokes: matchStrokes(bSorted[i], rSorted[i], fmt) });
+        sessions.push({ id: "g" + si, name: f, format: label, blurb: f === "Foursomes" ? "One ball per pair, alternate shots." : "Pairs, better ball.", matches, reserve: [...bp.reserve, ...rp.reserve] });
+      }
+    });
+    const sumB = blue.reduce((n, id) => n + golfer(id).hcp, 0);
+    const sumR = red.reduce((n, id) => n + golfer(id).hcp, 0);
+    const avgB = blue.length ? sumB / blue.length : 0;
+    const avgR = red.length ? sumR / red.length : 0;
+    return { teams, sessions, blue, red, sumB, sumR, avgB, avgR };
+  }
+
+  function balanceLabel(diff) {
+    if (diff <= 1) return { txt: "Dead even", pct: 97 };
+    if (diff <= 2.5) return { txt: "Well balanced", pct: 84 };
+    if (diff <= 4) return { txt: "Competitive", pct: 66 };
+    return { txt: "A bit lopsided — reshuffle?", pct: 44 };
+  }
+  function draftPlayer(id) {
+    const g = golfer(id);
+    return `<span class="dp"><span class="dp-name">${g.name}</span><span class="dp-h">${g.hcp}</span></span>`;
+  }
+  function draftMatch(m) {
+    const s = m.strokes;
+    const note = !s || !s.recv ? "Off scratch" : `${s.recv === "blue" ? "Azure" : "Crimson"} +${s.diff}`;
+    return `<div class="dmatch">
+      <div class="dm-side ${s && s.recv === "blue" ? "rec" : ""}">${m.blue.map(draftPlayer).join("")}</div>
+      <div class="dm-mid"><span class="dm-tee">${m.tee}</span><span class="dm-strokes">${note}</span></div>
+      <div class="dm-side right ${s && s.recv === "red" ? "rec" : ""}">${m.red.map(draftPlayer).join("")}</div>
+    </div>`;
+  }
+  function viewDraft() {
+    const e = event(route.id);
+    const players = attendeesOf(e);
+    const formats = e.formats && e.formats.length ? e.formats : ["Fourballs", "Foursomes", "Singles"];
+    const sheet = buildMatchSheet(players, formats, draftSeed);
+    const bal = balanceLabel(Math.abs(sheet.avgB - sheet.avgR));
+    const roster = (ids, cls) => [...ids].sort(byHcp).map((id) =>
+      `<li>${av(id, 30)}<span class="dr-name">${golfer(id).name}</span><span class="dr-h">hcp ${golfer(id).hcp}</span></li>`).join("");
+
+    const sessions = sheet.sessions.map((s) => `<section class="dsession">
+      <div class="dsession-head"><h3>${s.name}</h3><span class="fmt">${s.format}</span></div>
+      <div class="dmatch-list">${s.matches.map(draftMatch).join("")}</div>
+      ${s.reserve && s.reserve.length ? `<div class="dreserve">Sitting out: ${s.reserve.map((id) => golfer(id).name).join(", ")}</div>` : ""}
+    </section>`).join("");
+
+    return `<div class="view">
+      <div class="draft-top">
+        <div>
+          <p class="crumb" data-nav="event" data-id="${e.id}">← ${e.title}</p>
+          <h2 class="draft-h">Captain's draft</h2>
+          <p class="muted">${players.length} players split into two balanced teams by handicap, then paired up for a fair, competitive match — just like the real thing.</p>
+        </div>
+        <div class="draft-actions">
+          <button class="btn outline" data-act="reshuffle">↻ Reshuffle</button>
+          <button class="btn primary" data-act="lock-sheet" data-id="${e.id}">Lock in &amp; open scoreboard</button>
+        </div>
+      </div>
+
+      <div class="draft-teams">
+        <div class="card dteam blue"><div class="dteam-head"><span class="team-chip blue"></span><b>${sheet.teams.blue.name}</b><span class="dteam-sum">avg ${sheet.avgB.toFixed(1)} · c. ${sheet.teams.blue.captain.split(" ")[0]}</span></div><ul class="droster">${roster(sheet.blue)}</ul></div>
+        <div class="card dteam red"><div class="dteam-head"><span class="team-chip red"></span><b>${sheet.teams.red.name}</b><span class="dteam-sum">avg ${sheet.avgR.toFixed(1)} · c. ${sheet.teams.red.captain.split(" ")[0]}</span></div><ul class="droster">${roster(sheet.red)}</ul></div>
+      </div>
+
+      <div class="card balance"><div class="bal-row"><span class="bal-label">Match balance</span><span class="bal-val">${bal.txt}</span></div>
+        <div class="bal-track"><span style="width:${bal.pct}%"></span></div>
+        <div class="bal-note">Average handicap — Azure ${sheet.avgB.toFixed(1)} · Crimson ${sheet.avgR.toFixed(1)}. In each match the lower-handicap side gives shots to the higher one, so every game stays close.</div>
+      </div>
+
+      ${sessions}
+    </div>`;
+  }
+  function lockSheet(eid) {
+    const e = event(eid);
+    const players = attendeesOf(e);
+    const formats = e.formats && e.formats.length ? e.formats : ["Fourballs", "Foursomes", "Singles"];
+    const sheet = buildMatchSheet(players, formats, draftSeed);
+    e.teams = sheet.teams; e.sessions = sheet.sessions; e.status = "live"; e.when = "Live now";
+    ui.sheets[eid] = { teams: sheet.teams, sessions: sheet.sessions };
+    persist();
+    nav("event", eid);
+    toast("Match sheet locked in — let battle commence.");
   }
 
   // ===================================================================
@@ -599,10 +809,10 @@
   // ===================================================================
   const VIEWS = {
     feed: viewFeed, discover: viewDiscover, events: viewEvents, courses: viewCourses,
-    profile: viewProfile, society: viewSociety, event: viewEvent,
+    profile: viewProfile, society: viewSociety, event: viewEvent, draft: viewDraft,
   };
   function navTab() {
-    return { feed: "feed", discover: "discover", events: "events", courses: "courses", profile: "feed", society: "feed", event: "feed" }[route.view];
+    return { feed: "feed", discover: "discover", events: "events", courses: "courses", profile: "feed", society: "feed", event: "feed", draft: "events" }[route.view];
   }
   function render() {
     document.querySelector("#main").innerHTML = (VIEWS[route.view] || viewFeed)();
@@ -611,10 +821,8 @@
     const a = document.querySelector("#meAvatar");
     a.style.background = grad(m.colour); a.textContent = initials(m.name);
     document.querySelector("#footMeta").textContent = `Signed in as ${m.name} · @${m.handle}`;
-    // when picking a course on the map, reveal its card rather than jumping to top
-    const card = route.view === "courses" && route.id && document.getElementById("course-" + route.id);
-    if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
-    else window.scrollTo({ top: 0 });
+    window.scrollTo({ top: 0 });
+    if (route.view === "courses") initCourseMap();
   }
   function nav(view, id, tab) { route = { view, id: id || null, tab: tab || null }; render(); }
 
@@ -652,6 +860,10 @@
       }
       if (act === "message") { toast(`Direct messages are coming soon — you'll be able to chat with ${golfer(actEl.dataset.id).name} to sort a game.`); return; }
       if (act === "organise-here") { openModal("newday", { venue: course(actEl.dataset.id).name }); return; }
+      if (act === "focus-course") { focusCourse(actEl.dataset.id, { fromCard: true }); return; }
+      if (act === "build-sheet") { nav("draft", actEl.dataset.id); return; }
+      if (act === "reshuffle") { draftSeed = (draftSeed + 1) % 9973; render(); return; }
+      if (act === "lock-sheet") { lockSheet(actEl.dataset.id); return; }
       if (act === "compose") { openModal("compose"); return; }
       if (act === "modal-close" || act === "modal-cancel") { closeModal(); return; }
       if (act === "create-day") { createDay(); return; }
