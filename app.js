@@ -36,27 +36,31 @@
   const event   = (id) => data.events.find((e) => e.id === id);
   const me = () => golfer(ME);
 
+  // muted, club-blazer avatar palette [lighter, base]
   const COLOURS = {
-    green:[" #1f9d57","#0c5a2b"], blue:["#3f6fe0","#234fb8"], red:["#e84a4a","#bf2222"],
-    amber:["#e0a23f","#b87410"], violet:["#8b5cf6","#6d28d9"], teal:["#14b8a6","#0d9488"],
-    pink:["#ec4899","#be185d"], slate:["#64748b","#475569"], orange:["#f97316","#c2410c"],
-    cyan:["#22b8d6","#0891b2"], lime:["#84cc16","#4d7c0f"], indigo:["#6366f1","#4338ca"],
+    green:["#2f7d57","#1a4a33"], blue:["#41619e","#293f63"], red:["#b04c57","#7c2a34"],
+    amber:["#c2954a","#896325"], violet:["#7a68ac","#4d3f7e"], teal:["#3b988f","#1c6960"],
+    pink:["#c0738e","#8a4361"], slate:["#6a7585","#454e5d"], orange:["#c5854c","#915626"],
+    cyan:["#4791a4","#266b78"], lime:["#7f9a4b","#566b29"], indigo:["#6168a8","#3c4080"],
   };
-  const grad = (c) => { const p = COLOURS[c] || COLOURS.slate; return `linear-gradient(150deg,${p[0]},${p[1]})`; };
+  const grad  = (c) => { const p = COLOURS[c] || COLOURS.slate; return `linear-gradient(150deg,${p[0]},${p[1]})`; };
+  const solid = (c) => (COLOURS[c] || COLOURS.slate)[1];
   const initials = (name) => name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  // society monogram: skip a leading "The", take first letters of next two words
+  const mono = (name) => name.replace(/^the\s+/i, "").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   const fmtPts = (n) => (n % 1 === 0 ? String(n) : (Math.floor(n) || "") + "½");
 
   // social avatar for a golfer
   function av(id, size = 38) {
     const g = golfer(id);
     return `<button class="uavatar" data-nav="profile" data-id="${id}" title="${g.name}"
-      style="width:${size}px;height:${size}px;font-size:${Math.round(size*0.36)}px;background:${grad(g.colour)}">${initials(g.name)}</button>`;
+      style="width:${size}px;height:${size}px;font-size:${Math.round(size*0.34)}px;background:${solid(g.colour)}">${initials(g.name)}</button>`;
   }
   function avatarStack(ids, max = 5, size = 30) {
     const shown = ids.slice(0, max);
     const extra = ids.length - shown.length;
     return `<span class="stack">
-      ${shown.map((id) => `<span class="stack-av" style="width:${size}px;height:${size}px;background:${grad(golfer(id).colour)}" title="${golfer(id).name}">${initials(golfer(id).name)}</span>`).join("")}
+      ${shown.map((id) => `<span class="stack-av" style="width:${size}px;height:${size}px;background:${solid(golfer(id).colour)}" title="${golfer(id).name}">${initials(golfer(id).name)}</span>`).join("")}
       ${extra > 0 ? `<span class="stack-more" style="width:${size}px;height:${size}px">+${extra}</span>` : ""}
     </span>`;
   }
@@ -96,7 +100,7 @@
   function socAvatar(sid, size = 40) {
     const s = society(sid);
     return `<button class="soc-avatar" data-nav="society" data-id="${sid}" title="${s.name}"
-      style="width:${size}px;height:${size}px;background:${grad(s.colour)}">⛳</button>`;
+      style="width:${size}px;height:${size}px;font-size:${Math.round(size*0.36)}px;background:${solid(s.colour)}">${mono(s.name)}</button>`;
   }
   function reactionBar(post) {
     let emojis = Object.keys(post.reactions);
@@ -156,13 +160,13 @@
       body = `<p class="post-text">${post.text}</p>
         <div class="scoreline">
           <div class="sl-side ${r.blue >= r.red ? "win" : ""}"><span class="sl-name"><span class="team-chip blue"></span>Team Azure</span><span class="sl-score">${fmtPts(r.blue)}</span></div>
-          <div class="sl-cup">🏆<div class="sl-sub">${r.event}</div></div>
+          <div class="sl-cup"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v4a6 6 0 0 1-12 0V4Z"/><path d="M6 6H4a2 2 0 0 0 0 4h2M18 6h2a2 2 0 0 1 0 4h-2"/><path d="M10 14.5V17m4-2.5V17M8 20h8M9 20a3 3 0 0 1 6 0"/></svg><div class="sl-sub">${r.event}</div></div>
           <div class="sl-side right ${r.red > r.blue ? "win" : ""}"><span class="sl-name">Team Crimson<span class="team-chip red"></span></span><span class="sl-score">${fmtPts(r.red)}</span></div>
         </div>`;
     } else if (post.type === "photo") {
       head = postHead({ avatar: av(post.authorGolfer, 40), title: golfer(post.authorGolfer).name, sub: "@" + golfer(post.authorGolfer).handle, time: post.time });
       body = `<p class="post-text">${post.text}</p>
-        <div class="photo" style="background:${grad(post.tint)}"><span class="photo-cap">📷 ${post.caption || "On the course"}</span></div>`;
+        <div class="photo" style="background:${grad(post.tint)}"><span class="photo-cap">${post.caption || "On the course"}</span></div>`;
     } else if (post.type === "text") {
       head = postHead({ avatar: av(post.authorGolfer, 40), title: golfer(post.authorGolfer).name, sub: "@" + golfer(post.authorGolfer).handle, time: post.time });
       body = `<p class="post-text">${post.text}</p>`;
@@ -219,10 +223,10 @@
   function societyCard(s) {
     const upcoming = data.events.filter((e) => e.societyId === s.id && e.status !== "complete").length;
     return `<div class="card disc-card">
-      <div class="disc-cover" style="background:${grad(s.colour)}"><span>⛳</span></div>
+      <div class="disc-cover" style="background:${grad(s.colour)}"><span>${mono(s.name)}</span></div>
       <div class="disc-body">
         <div class="disc-name" data-nav="society" data-id="${s.id}">${s.name}</div>
-        <div class="disc-meta">📍 ${s.loc} · ${memberCount(s)} members${upcoming ? ` · ${upcoming} upcoming` : ""}</div>
+        <div class="disc-meta">${s.loc} · ${memberCount(s)} members${upcoming ? ` · ${upcoming} upcoming` : ""}</div>
         <p class="disc-about">${s.about}</p>
         <div class="disc-foot">
           ${avatarStack(s.members, 5, 28)}
@@ -299,10 +303,10 @@
       <div class="card profile-head">
         <div class="cover" style="background:${grad(s.colour)}"></div>
         <div class="ph-row">
-          <div class="big-avatar soc" style="background:${grad(s.colour)}">⛳</div>
+          <div class="big-avatar soc" style="background:${solid(s.colour)}">${mono(s.name)}</div>
           <div class="ph-main">
             <h2>${s.name}</h2>
-            <div class="muted">@${s.handle} · 📍 ${s.loc} · ${memberCount(s)} members · est. ${s.founded}</div>
+            <div class="muted">@${s.handle} · ${s.loc} · ${memberCount(s)} members · est. ${s.founded}</div>
             <p class="bio">${s.about}</p>
           </div>
           <button class="btn ${member ? "ghost" : "primary"}" data-act="join" data-id="${s.id}">${member ? "✓ Member" : "Join society"}</button>
@@ -348,7 +352,7 @@
           <div class="big-avatar" style="background:${grad(g.colour)}">${initials(g.name)}</div>
           <div class="ph-main">
             <h2>${g.name}</h2>
-            <div class="muted">@${g.handle} · 📍 ${g.loc} · ${g.club}</div>
+            <div class="muted">@${g.handle} · ${g.loc} · ${g.club}</div>
             <div class="profile-meta">
               <span class="hcp-badge">Handicap <b>${g.hcp}</b></span>
               <span class="conn"><b>${followerBase(g) + (isFollowing(g.id) ? 1 : 0)}</b> followers</span>
@@ -436,7 +440,7 @@
         <div class="card profile-head">
           <div class="cover" style="background:${grad(s.colour)}"></div>
           <div class="ph-row">
-            <div class="big-avatar soc" style="background:${grad(s.colour)}">⛳</div>
+            <div class="big-avatar soc" style="background:${solid(s.colour)}">${mono(s.name)}</div>
             <div class="ph-main">
               <h2>${e.title}</h2>
               <div class="muted">${e.date} · ${e.venue}</div>
@@ -486,7 +490,7 @@
           <div class="team-side right"><span class="team-name"><span class="team-chip red"></span>${T.red.name}</span><span class="team-captain">Captain · ${T.red.captain}</span><span class="team-score">${fmtPts(r)}</span></div>
         </div>
         <div class="progress">
-          <div class="progress-track"><span class="target-line" style="left:${targetPct}%"></span><span class="target-flag" style="left:${targetPct}%">⛳ ${fmtPts(target)}</span><span class="fill fill-blue" style="width:${blueW}%"></span><span class="fill fill-red" style="width:${redW}%"></span></div>
+          <div class="progress-track"><span class="target-line" style="left:${targetPct}%"></span><span class="target-flag" style="left:${targetPct}%">${fmtPts(target)} to win</span><span class="fill fill-blue" style="width:${blueW}%"></span><span class="fill fill-red" style="width:${redW}%"></span></div>
           <div class="progress-legend"><span>${T.blue.name} — ${fmtPts(b)} pts</span><span>${T.red.name} — ${fmtPts(r)} pts</span></div>
         </div>
       </section>
