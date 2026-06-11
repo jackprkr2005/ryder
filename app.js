@@ -36,12 +36,12 @@
   const event   = (id) => data.events.find((e) => e.id === id);
   const me = () => golfer(ME);
 
-  // muted, club-blazer avatar palette [lighter, base]
+  // ink-monochrome avatar palette [lighter, base] — team colour lives only in matches
   const COLOURS = {
-    green:["#2f7d57","#1a4a33"], blue:["#41619e","#293f63"], red:["#b04c57","#7c2a34"],
-    amber:["#c2954a","#896325"], violet:["#7a68ac","#4d3f7e"], teal:["#3b988f","#1c6960"],
-    pink:["#c0738e","#8a4361"], slate:["#6a7585","#454e5d"], orange:["#c5854c","#915626"],
-    cyan:["#4791a4","#266b78"], lime:["#7f9a4b","#566b29"], indigo:["#6168a8","#3c4080"],
+    green:["#27352c","#1c2820"], blue:["#283243","#1d2632"], red:["#3a2a2c","#2b2020"],
+    amber:["#352f25","#272219"], violet:["#2f2b39","#23202c"], teal:["#243734","#1a2826"],
+    pink:["#382b32","#2a2026"], slate:["#2e343d","#22272e"], orange:["#372f27","#28221c"],
+    cyan:["#243639","#1a2a2c"], lime:["#2e3527","#22281d"], indigo:["#2d2f3e","#22232f"],
   };
   const grad  = (c) => { const p = COLOURS[c] || COLOURS.slate; return `linear-gradient(150deg,${p[0]},${p[1]})`; };
   const solid = (c) => (COLOURS[c] || COLOURS.slate)[1];
@@ -490,7 +490,7 @@
           <div class="team-side right"><span class="team-name"><span class="team-chip red"></span>${T.red.name}</span><span class="team-captain">Captain · ${T.red.captain}</span><span class="team-score">${fmtPts(r)}</span></div>
         </div>
         <div class="progress">
-          <div class="progress-track"><span class="target-line" style="left:${targetPct}%"></span><span class="target-flag" style="left:${targetPct}%">${fmtPts(target)} to win</span><span class="fill fill-blue" style="width:${blueW}%"></span><span class="fill fill-red" style="width:${redW}%"></span></div>
+          <div class="progress-track"><span class="target-line" style="left:${targetPct}%"></span><span class="target-flag" style="left:${targetPct}%">▲ ${fmtPts(target)}</span><span class="fill fill-blue" style="width:${blueW}%"></span><span class="fill fill-red" style="width:${redW}%"></span></div>
           <div class="progress-legend"><span>${T.blue.name} — ${fmtPts(b)} pts</span><span>${T.red.name} — ${fmtPts(r)} pts</span></div>
         </div>
       </section>
