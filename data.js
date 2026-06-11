@@ -203,4 +203,34 @@ window.RYDER_SEED = {
       reactions: { "👋": 14, "👍": 3 }, comments: [],
     },
   ],
+
+  // Golf clubs/courses near you. x/y are % positions on the region map.
+  // `match` links a course to golfers (by club) and events (by venue).
+  courses: [
+    { id: "c1", name: "Saunton Golf Club", match: "Saunton", town: "Braunton", type: "Links",
+      holes: 36, par: 71, est: "1897", x: 31, y: 40, colour: "blue",
+      blurb: "Two championship links — East & West — laid out through the dunes of Braunton Burrows. A proper test in the wind.",
+      facilities: ["2 courses", "Range", "Clubhouse", "Buggies"] },
+    { id: "c2", name: "Royal North Devon", match: "Royal North Devon", town: "Westward Ho!", type: "Links",
+      holes: 18, par: 71, est: "1864", x: 17, y: 52, colour: "red",
+      blurb: "The oldest links course in England — sheep graze the fairways and the sea rushes guard the famous Cape bunker.",
+      facilities: ["Historic links", "Range", "Museum", "Visitors welcome"] },
+    { id: "c3", name: "Ilfracombe Golf Club", match: "Ilfracombe", town: "Ilfracombe", type: "Clifftop",
+      holes: 18, par: 68, est: "1892", x: 38, y: 17, colour: "teal",
+      blurb: "Spectacular clifftop golf with sea views from every hole — bring a camera and an extra sleeve of balls.",
+      facilities: ["Sea views", "Clubhouse", "Visitors welcome"] },
+    { id: "c4", name: "Libbaton Golf Club", match: "Libbaton", town: "Umberleigh", type: "Parkland",
+      holes: 18, par: 72, est: "1989", x: 54, y: 64, colour: "green",
+      blurb: "Rolling inland parkland that stays playable all winter — gentle on the legs and a friendly society favourite.",
+      facilities: ["Range", "Lodges", "Buggies", "Society days"] },
+    { id: "c5", name: "Great Torrington", match: "Torrington", town: "Torrington", type: "Heathland",
+      holes: 9, par: 35, est: "1895", x: 36, y: 62, colour: "amber",
+      blurb: "A characterful nine-holer on common land — quick to get round and perfect for an after-work nine.",
+      facilities: ["9 holes", "Common land", "Honesty box"] },
+    { id: "c6", name: "Holsworthy Golf Club", match: "Holsworthy", town: "Holsworthy", type: "Parkland",
+      holes: 18, par: 71, est: "1937", x: 9, y: 73, colour: "violet",
+      blurb: "Welcoming parkland on the Devon–Cornwall border with wide fairways and a warm clubhouse.",
+      facilities: ["Clubhouse", "Society days", "Visitors welcome"] },
+  ],
 };
+

@@ -34,14 +34,15 @@
   const golfer  = (id) => data.golfers.find((g) => g.id === id);
   const society = (id) => data.societies.find((s) => s.id === id);
   const event   = (id) => data.events.find((e) => e.id === id);
+  const course  = (id) => data.courses.find((c) => c.id === id);
   const me = () => golfer(ME);
 
-  // ink-monochrome avatar palette [lighter, base] — team colour lives only in matches
+  // muted, club-blazer avatar palette [lighter, base]
   const COLOURS = {
-    green:["#27352c","#1c2820"], blue:["#283243","#1d2632"], red:["#3a2a2c","#2b2020"],
-    amber:["#352f25","#272219"], violet:["#2f2b39","#23202c"], teal:["#243734","#1a2826"],
-    pink:["#382b32","#2a2026"], slate:["#2e343d","#22272e"], orange:["#372f27","#28221c"],
-    cyan:["#243639","#1a2a2c"], lime:["#2e3527","#22281d"], indigo:["#2d2f3e","#22232f"],
+    green:["#2f7d57","#1a4a33"], blue:["#41619e","#293f63"], red:["#b04c57","#7c2a34"],
+    amber:["#c2954a","#896325"], violet:["#7a68ac","#4d3f7e"], teal:["#3b988f","#1c6960"],
+    pink:["#c0738e","#8a4361"], slate:["#6a7585","#454e5d"], orange:["#c5854c","#915626"],
+    cyan:["#4791a4","#266b78"], lime:["#7f9a4b","#566b29"], indigo:["#6168a8","#3c4080"],
   };
   const grad  = (c) => { const p = COLOURS[c] || COLOURS.slate; return `linear-gradient(150deg,${p[0]},${p[1]})`; };
   const solid = (c) => (COLOURS[c] || COLOURS.slate)[1];
@@ -490,7 +491,7 @@
           <div class="team-side right"><span class="team-name"><span class="team-chip red"></span>${T.red.name}</span><span class="team-captain">Captain · ${T.red.captain}</span><span class="team-score">${fmtPts(r)}</span></div>
         </div>
         <div class="progress">
-          <div class="progress-track"><span class="target-line" style="left:${targetPct}%"></span><span class="target-flag" style="left:${targetPct}%">▲ ${fmtPts(target)}</span><span class="fill fill-blue" style="width:${blueW}%"></span><span class="fill fill-red" style="width:${redW}%"></span></div>
+          <div class="progress-track"><span class="target-line" style="left:${targetPct}%"></span><span class="target-flag" style="left:${targetPct}%">${fmtPts(target)} to win</span><span class="fill fill-blue" style="width:${blueW}%"></span><span class="fill fill-red" style="width:${redW}%"></span></div>
           <div class="progress-legend"><span>${T.blue.name} — ${fmtPts(b)} pts</span><span>${T.red.name} — ${fmtPts(r)} pts</span></div>
         </div>
       </section>
@@ -518,14 +519,90 @@
   }
 
   // ===================================================================
+  //  COURSES + MAP
+  // ===================================================================
+  const playersAtCourse = (c) => data.golfers.filter((g) => g.club.includes(c.match));
+  const societiesAtCourse = (c) =>
+    data.societies.filter((s) => s.members.some((id) => golfer(id).club.includes(c.match)));
+  const daysAtCourse = (c) => data.events.filter((e) => (e.venue || "").includes(c.match));
+
+  const MAP_SVG = `<svg class="map-svg" viewBox="0 0 100 80" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <rect width="100" height="80" fill="#cfe0e9"/>
+    <path d="M0,33 C12,27 20,14 38,9 C58,3 80,7 100,3 L100,80 L0,80 Z" fill="#e7eed7"/>
+    <path d="M0,33 C12,27 20,14 38,9 C58,3 80,7 100,3" fill="none" stroke="#b9cdc9" stroke-width=".5"/>
+    <path d="M20,80 C22,64 18,52 26,44 C31,39 33,34 33,30" fill="none" stroke="#cfe0e9" stroke-width="3.4" stroke-linecap="round"/>
+    <path d="M33,30 C36,34 40,37 47,40" fill="none" stroke="#cfe0e9" stroke-width="2.4" stroke-linecap="round"/>
+    <g fill="none" stroke="#d8e0c4" stroke-width=".5" opacity=".7">
+      <path d="M44,20 C58,24 70,30 86,34"/><path d="M40,32 C56,38 70,46 88,50"/><path d="M52,60 C64,64 74,68 90,70"/>
+    </g>
+  </svg>`;
+
+  function coursePin(c, sel) {
+    return `<button class="pin ${sel === c.id ? "sel" : ""}" style="left:${c.x}%;top:${c.y}%" data-nav="courses" data-id="${c.id}" title="${c.name}">
+      <span class="pin-dot" style="background:${solid(c.colour)}"></span>
+      <span class="pin-label">${c.name.replace(/ Golf Club| Golf$/, "")}</span>
+    </button>`;
+  }
+
+  function courseCard(c, sel) {
+    const players = playersAtCourse(c);
+    const socs = societiesAtCourse(c);
+    const days = daysAtCourse(c);
+    const firsts = players.slice(0, 2).map((p) => p.name.split(" ")[0]).join(", ");
+    return `<div class="card course-card ${sel === c.id ? "selected" : ""}" id="course-${c.id}" data-nav="courses" data-id="${c.id}">
+      <div class="cc-head">
+        <span class="cc-marker" style="background:${solid(c.colour)}">${mono(c.name)}</span>
+        <div class="cc-id">
+          <div class="cc-name">${c.name}</div>
+          <div class="cc-meta">${c.town} · ${c.holes} holes · par ${c.par} · est. ${c.est}</div>
+        </div>
+        <span class="cc-type">${c.type}</span>
+      </div>
+      <p class="cc-blurb">${c.blurb}</p>
+      <div class="chips">${c.facilities.map((f) => `<span class="chip">${f}</span>`).join("")}</div>
+      <div class="cc-stats">
+        <div><b>${players.length}</b><span>play here</span></div>
+        <div><b>${socs.length}</b><span>societ${socs.length === 1 ? "y" : "ies"}</span></div>
+        <div><b>${days.length}</b><span>day${days.length === 1 ? "" : "s"} on</span></div>
+      </div>
+      ${players.length
+        ? `<div class="cc-players">${avatarStack(players.map((p) => p.id), 8, 28)}<span class="muted">${firsts}${players.length > 2 ? ` +${players.length - 2} more play here` : " play here"}</span></div>`
+        : `<div class="cc-players"><span class="muted">No one from your network plays here yet — be the first.</span></div>`}
+      <div class="cc-actions">
+        <button class="btn primary sm" data-act="organise-here" data-id="${c.id}">Organise a day here</button>
+        ${days.length ? `<button class="btn outline sm" data-nav="event" data-id="${days[0].id}">See the day on</button>` : ""}
+      </div>
+    </div>`;
+  }
+
+  function viewCourses() {
+    const sel = route.id;
+    const pins = data.courses.map((c) => coursePin(c, sel)).join("");
+    const cards = data.courses.map((c) => courseCard(c, sel)).join("");
+    return `<div class="view">
+      <div class="card disc-hero">
+        <h2>Find a course to play</h2>
+        <p>Browse the clubs near you, see who already plays where, and start a Ryder Cup day at any of them. Tap a marker to jump to a club.</p>
+      </div>
+      <div class="coursemap card">
+        ${MAP_SVG}
+        <div class="map-pins">${pins}</div>
+        <span class="map-badge">North Devon</span>
+      </div>
+      <p class="section-title">Clubs near you · ${data.courses.length}</p>
+      <div class="course-list">${cards}</div>
+    </div>`;
+  }
+
+  // ===================================================================
   //  ROUTER + RENDER
   // ===================================================================
   const VIEWS = {
-    feed: viewFeed, discover: viewDiscover, events: viewEvents,
+    feed: viewFeed, discover: viewDiscover, events: viewEvents, courses: viewCourses,
     profile: viewProfile, society: viewSociety, event: viewEvent,
   };
   function navTab() {
-    return { feed: "feed", discover: "discover", events: "events", profile: "feed", society: "feed", event: "feed" }[route.view];
+    return { feed: "feed", discover: "discover", events: "events", courses: "courses", profile: "feed", society: "feed", event: "feed" }[route.view];
   }
   function render() {
     document.querySelector("#main").innerHTML = (VIEWS[route.view] || viewFeed)();
@@ -534,7 +611,10 @@
     const a = document.querySelector("#meAvatar");
     a.style.background = grad(m.colour); a.textContent = initials(m.name);
     document.querySelector("#footMeta").textContent = `Signed in as ${m.name} · @${m.handle}`;
-    window.scrollTo({ top: 0 });
+    // when picking a course on the map, reveal its card rather than jumping to top
+    const card = route.view === "courses" && route.id && document.getElementById("course-" + route.id);
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+    else window.scrollTo({ top: 0 });
   }
   function nav(view, id, tab) { route = { view, id: id || null, tab: tab || null }; render(); }
 
@@ -571,6 +651,7 @@
         persist(); render(); return;
       }
       if (act === "message") { toast(`Direct messages are coming soon — you'll be able to chat with ${golfer(actEl.dataset.id).name} to sort a game.`); return; }
+      if (act === "organise-here") { openModal("newday", { venue: course(actEl.dataset.id).name }); return; }
       if (act === "compose") { openModal("compose"); return; }
       if (act === "modal-close" || act === "modal-cancel") { closeModal(); return; }
       if (act === "create-day") { createDay(); return; }
@@ -633,8 +714,8 @@
   document.body.appendChild(overlay);
 
   function closeModal() { overlay.hidden = true; overlay.innerHTML = ""; }
-  function openModal(type) {
-    overlay.innerHTML = type === "compose" ? composeModal() : newDayModal();
+  function openModal(type, opts = {}) {
+    overlay.innerHTML = type === "compose" ? composeModal() : newDayModal(opts.venue);
     overlay.hidden = false;
     const first = overlay.querySelector("input, textarea, select");
     if (first) first.focus();
@@ -660,9 +741,10 @@
     </div>`;
   }
 
-  function newDayModal() {
+  function newDayModal(venue) {
     const mySocs = data.societies.filter((s) => isMember(s.id));
     const fmts = ["Fourballs", "Foursomes", "Singles"];
+    const venueVal = venue || "Saunton GC — East";
     return `<div class="modal wide">
       <div class="modal-head">
         <div><h3 style="margin:0">Organise a day out</h3><div class="muted" style="font-size:13px">Set it up and your society gets the invite in their feed.</div></div>
@@ -670,7 +752,7 @@
       </div>
       <div class="form-grid">
         <label class="fld span2"><span>Event name</span><input id="ndTitle" type="text" placeholder="e.g. The Heathland Cup" value="The Autumn Clash" /></label>
-        <label class="fld"><span>Course / venue</span><input id="ndVenue" type="text" placeholder="Which course?" value="Saunton GC — East" /></label>
+        <label class="fld"><span>Course / venue</span><input id="ndVenue" type="text" placeholder="Which course?" value="${venueVal}" /></label>
         <label class="fld"><span>Date</span><input id="ndDate" type="text" placeholder="e.g. Sat 12 Sept 2026" value="Sat 26 Sept 2026" /></label>
         <label class="fld"><span>Host society</span><select id="ndSoc">${mySocs.map((s) => `<option value="${s.id}">${s.name}</option>`).join("")}</select></label>
         <label class="fld"><span>Total spots</span><input id="ndCap" type="number" min="2" value="12" /></label>

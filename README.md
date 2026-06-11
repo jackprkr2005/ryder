@@ -24,6 +24,10 @@ with a live team scoreboard and a feed full of results, photos and banter.
 - **Compose** — share a text update or a photo post to your feed.
 - **Discover** — find **societies near you**, **open days** you can jump
   straight into, and **players** in your area to **follow**.
+- **Courses** — a **map of golf clubs near you** with a club directory: course
+  type, holes/par, who already plays there, which societies use it and what
+  days are on — plus one-tap **Organise a day here** to start a Ryder Cup day at
+  that club. Built to push people to actually meet up and play.
 - **Society pages** — cover, members, upcoming days out and an **honours board**
   of past winners; one tap to join.
 - **Profiles** — handicap, home club, win/loss record, recent form, follower
