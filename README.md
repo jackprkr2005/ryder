@@ -32,9 +32,11 @@ with a live team scoreboard and a feed full of results, photos and banter.
   load. Swappable for Google/Apple Maps if you add an API key.)*
 - **Captain's draft** — the Ryder Cup pairing engine. From everyone who's in, it
   **auto-builds two handicap-balanced teams** (snake draft), then **pairs players
-  and seeds the match-ups** for Fourballs, Foursomes and Singles, with **shot
-  allocations** so every game stays close. Reshuffle until you're happy, then
-  **lock it in** to a live, playable scoreboard.
+  and seeds the match-ups** with **shot allocations** so every game stays close.
+  It's modelled as a real society day — **played over one day**: a morning round
+  (fourballs/foursomes) then **afternoon singles**, with morning and afternoon
+  tee times. Reshuffle until you're happy, then **lock it in** to a live,
+  playable scoreboard.
 - **Society pages** — cover, members, upcoming days out and an **honours board**
   of past winners; one tap to join.
 - **Profiles** — handicap, home club, win/loss record, recent form, follower

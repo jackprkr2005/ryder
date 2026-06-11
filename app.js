@@ -665,7 +665,13 @@
   const attendeesOf = (e) => [...new Set([...(e.attendees || []), ...(ui.going.has(e.id) ? [ME] : [])])];
 
   function rng(seed) { let s = (seed * 2654435761) % 2147483647 || 7; return () => (s = (s * 48271) % 2147483647) / 2147483647; }
-  function teeTime(i) { const t = 8 * 60 + 30 + i * 10; return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; }
+  function teeTime(baseMin, i) { const t = baseMin + i * 10; return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; }
+  // a society day is played over ONE day: a morning round then afternoon singles
+  function dayBlocks(total) {
+    if (total <= 1) return [{ name: "Afternoon", base: 13 * 60 + 30 }];
+    if (total === 2) return [{ name: "Morning", base: 8 * 60 }, { name: "Afternoon", base: 13 * 60 + 30 }];
+    return [{ name: "Morning", base: 8 * 60 }, { name: "Midday", base: 11 * 60 + 30 }, { name: "Afternoon", base: 14 * 60 }];
+  }
 
   // balanced two-team split: snake draft by handicap, lightly varied by seed
   function snakeDraft(ids, rnd) {
@@ -706,13 +712,17 @@
       blue: { id: "blue", name: "Team Azure", colour: "blue", captain: capOf(blue) },
       red:  { id: "red",  name: "Team Crimson", colour: "red", captain: capOf(red) },
     };
+    // one day: pairs rounds in the morning, singles in the afternoon
+    const ordered = [...formats.filter((f) => f !== "Singles"), ...formats.filter((f) => f === "Singles")];
+    const blocks = dayBlocks(ordered.length);
     const sessions = [];
-    formats.forEach((f, si) => {
+    ordered.forEach((f, si) => {
+      const blk = blocks[si] || blocks[blocks.length - 1];
       if (f === "Singles") {
         const bs = [...blue].sort(byHcp), rs = [...red].sort(byHcp), n = Math.min(bs.length, rs.length), matches = [];
-        for (let i = 0; i < n; i++) matches.push({ blue: [bs[i]], red: [rs[i]], status: "soon", winner: null, tee: teeTime(i), strokes: matchStrokes([bs[i]], [rs[i]], "Singles") });
+        for (let i = 0; i < n; i++) matches.push({ blue: [bs[i]], red: [rs[i]], status: "soon", winner: null, tee: teeTime(blk.base, i), strokes: matchStrokes([bs[i]], [rs[i]], "Singles") });
         const reserve = [...bs.slice(n), ...rs.slice(n)];
-        sessions.push({ id: "g" + si, name: "Singles", format: "Singles match play", blurb: "Everyone out — one point each.", matches, reserve });
+        sessions.push({ id: "g" + si, name: `${blk.name} Singles`, format: "Singles match play", blurb: "Everyone out — one point each.", matches, reserve });
       } else {
         const fmt = f === "Foursomes" ? "Foursomes" : "Fourball";
         const label = f === "Foursomes" ? "Foursomes (alternate shot)" : "Fourball (better ball)";
@@ -721,8 +731,8 @@
         const bSorted = bp.pairs.sort((a, b) => pairRating(a, fmt) - pairRating(b, fmt));
         const rSorted = rp.pairs.sort((a, b) => pairRating(a, fmt) - pairRating(b, fmt));
         const n = Math.min(bSorted.length, rSorted.length), matches = [];
-        for (let i = 0; i < n; i++) matches.push({ blue: bSorted[i], red: rSorted[i], status: "soon", winner: null, tee: teeTime(i), strokes: matchStrokes(bSorted[i], rSorted[i], fmt) });
-        sessions.push({ id: "g" + si, name: f, format: label, blurb: f === "Foursomes" ? "One ball per pair, alternate shots." : "Pairs, better ball.", matches, reserve: [...bp.reserve, ...rp.reserve] });
+        for (let i = 0; i < n; i++) matches.push({ blue: bSorted[i], red: rSorted[i], status: "soon", winner: null, tee: teeTime(blk.base, i), strokes: matchStrokes(bSorted[i], rSorted[i], fmt) });
+        sessions.push({ id: "g" + si, name: `${blk.name} ${f}`, format: label, blurb: f === "Foursomes" ? "One ball per pair, alternate shots." : "Pairs, better ball.", matches, reserve: [...bp.reserve, ...rp.reserve] });
       }
     });
     const sumB = blue.reduce((n, id) => n + golfer(id).hcp, 0);
@@ -771,7 +781,7 @@
         <div>
           <p class="crumb" data-nav="event" data-id="${e.id}">← ${e.title}</p>
           <h2 class="draft-h">Captain's draft</h2>
-          <p class="muted">${players.length} players split into two balanced teams by handicap, then paired up for a fair, competitive match — just like the real thing.</p>
+          <p class="muted">${players.length} players, two handicap-balanced teams, one day — a morning round then afternoon singles. Paired up for a fair, competitive match, just like the real thing.</p>
         </div>
         <div class="draft-actions">
           <button class="btn outline" data-act="reshuffle">↻ Reshuffle</button>
@@ -968,8 +978,8 @@
         <label class="fld"><span>Date</span><input id="ndDate" type="text" placeholder="e.g. Sat 12 Sept 2026" value="Sat 26 Sept 2026" /></label>
         <label class="fld"><span>Host society</span><select id="ndSoc">${mySocs.map((s) => `<option value="${s.id}">${s.name}</option>`).join("")}</select></label>
         <label class="fld"><span>Total spots</span><input id="ndCap" type="number" min="2" value="12" /></label>
-        <div class="fld span2"><span>Formats</span>
-          <div class="fmt-grid">${fmts.map((f, i) => `<button type="button" class="fmt-pill ${i < 3 ? "on" : ""}" data-act="fmt-toggle" data-fmt="${f}">${f}</button>`).join("")}</div>
+        <div class="fld span2"><span>The day's format <em>· one day — a morning round, then afternoon singles</em></span>
+          <div class="fmt-grid">${fmts.map((f) => `<button type="button" class="fmt-pill ${f === "Foursomes" ? "" : "on"}" data-act="fmt-toggle" data-fmt="${f}">${f === "Singles" ? "Afternoon Singles" : "Morning " + f}</button>`).join("")}</div>
         </div>
         <label class="fld span2"><span>A note for your players</span><input id="ndNote" type="text" placeholder="Cost, format, plans for after…" value="Two-team matchplay then food in the clubhouse. All welcome!" /></label>
       </div>
