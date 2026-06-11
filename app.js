@@ -11,15 +11,22 @@
 
   // UI state that the user can change (persisted)
   const ui = Object.assign(
-    { joined: [], going: [], react: {} },
+    { joined: [], going: [], react: {}, follows: [], posts: [], events: [], comments: {} },
     (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } })()
   );
   ui.joined = new Set(ui.joined);
   ui.going = new Set(ui.going);
+  ui.follows = new Set(ui.follows);
+  ui.comments = ui.comments || {};
   const persist = () =>
     localStorage.setItem(STORE, JSON.stringify({
       joined: [...ui.joined], going: [...ui.going], react: ui.react,
+      follows: [...ui.follows], posts: ui.posts, events: ui.events, comments: ui.comments,
     }));
+
+  // merge any user-created content back into the working data set
+  (ui.events || []).forEach((e) => { if (!data.events.some((x) => x.id === e.id)) data.events.push(e); });
+  data.feed = [...(ui.posts || []), ...data.feed];
 
   let route = { view: "feed", id: null, tab: null };
 
@@ -65,6 +72,14 @@
     return base + (ui.react[post.id] === emoji ? 1 : 0);
   }
 
+  // follow graph (seed has none, so fabricate a stable follower base per golfer)
+  const isFollowing = (id) => ui.follows.has(id);
+  const followerBase = (g) => 20 + g.rec.p * 3 + g.rec.w * 2;
+  function postComments(post) {
+    return [...(post.comments || []), ...(ui.comments[post.id] || [])];
+  }
+  const now = () => "just now";
+
   // ===================================================================
   //  FEED
   // ===================================================================
@@ -84,9 +99,11 @@
       style="width:${size}px;height:${size}px;background:${grad(s.colour)}">⛳</button>`;
   }
   function reactionBar(post) {
-    const emojis = Object.keys(post.reactions);
+    let emojis = Object.keys(post.reactions);
+    if (ui.react[post.id] && !emojis.includes(ui.react[post.id])) emojis = [...emojis, ui.react[post.id]];
+    if (!emojis.length) emojis = ["👍", "🔥", "⛳"]; // user posts start with a default set
     const total = emojis.reduce((n, e) => n + reactCount(post, e), 0);
-    const nComments = post.comments.length;
+    const nComments = postComments(post).length;
     return `<div class="react-bar">
       <div class="reacts">
         ${emojis.map((e) => `<button class="react ${ui.react[post.id] === e ? "on" : ""}" data-act="react" data-post="${post.id}" data-emoji="${e}">${e} <b>${reactCount(post, e)}</b></button>`).join("")}
@@ -95,12 +112,12 @@
     </div>`;
   }
   function comments(post) {
-    if (!post.comments.length) return "";
+    const list = postComments(post);
     return `<div class="comments">
-      ${post.comments.map((c) => `<div class="comment">${av(c.by, 28)}
+      ${list.map((c) => `<div class="comment">${av(c.by, 28)}
         <div><b>${golfer(c.by).name}</b> <span class="muted">${c.time}</span><br/>${c.text}</div></div>`).join("")}
       <div class="comment add"><span class="uavatar" style="width:28px;height:28px;font-size:10px;background:${grad(me().colour)}">${initials(me().name)}</span>
-        <input placeholder="Add a comment…" /></div>
+        <input placeholder="Add a comment…" data-comment="${post.id}" /></div>
     </div>`;
   }
 
@@ -123,7 +140,7 @@
       <div class="em-foot">
         ${avatarStack(e.attendees, 6, 28)}
         <span class="em-count">${filled} of ${e.capacity} going</span>
-        <button class="btn ${going ? "ghost" : "primary"} sm" data-act="rsvp" data-id="${eid}" onclick="event.stopPropagation()">${going ? "✓ Going" : "Join day"}</button>
+        <button class="btn ${going ? "ghost" : "primary"} sm" data-act="rsvp" data-id="${eid}">${going ? "✓ Going" : "Join day"}</button>
       </div>
     </div>`;
   }
@@ -145,7 +162,10 @@
     } else if (post.type === "photo") {
       head = postHead({ avatar: av(post.authorGolfer, 40), title: golfer(post.authorGolfer).name, sub: "@" + golfer(post.authorGolfer).handle, time: post.time });
       body = `<p class="post-text">${post.text}</p>
-        <div class="photo" style="background:${grad(post.tint)}"><span class="photo-cap">📷 ${post.caption}</span></div>`;
+        <div class="photo" style="background:${grad(post.tint)}"><span class="photo-cap">📷 ${post.caption || "On the course"}</span></div>`;
+    } else if (post.type === "text") {
+      head = postHead({ avatar: av(post.authorGolfer, 40), title: golfer(post.authorGolfer).name, sub: "@" + golfer(post.authorGolfer).handle, time: post.time });
+      body = `<p class="post-text">${post.text}</p>`;
     } else if (post.type === "join") {
       head = postHead({ avatar: av(post.authorGolfer, 40), title: golfer(post.authorGolfer).name, sub: "@" + golfer(post.authorGolfer).handle, time: post.time });
       body = `<p class="post-text">${post.text.replace(/The [^.]+/, (m) => `<a data-nav="society" data-id="${post.societyId}" class="link">${m}</a>`)}</p>`;
@@ -240,7 +260,7 @@
           <div class="person-name">${g.name}</div>
           <div class="person-meta">${g.club}</div>
           <div class="person-stats"><span>hcp <b>${g.hcp}</b></span><span>${g.rec.w}W</span></div>
-          <button class="btn outline xs" data-act="follow" onclick="event.stopPropagation()">Follow</button>
+          <button class="btn ${isFollowing(g.id) ? "ghost" : "outline"} xs" data-act="follow" data-id="${g.id}">${isFollowing(g.id) ? "✓ Following" : "Follow"}</button>
         </div>`).join("")}
       </div>
     </div>`;
@@ -329,9 +349,18 @@
           <div class="ph-main">
             <h2>${g.name}</h2>
             <div class="muted">@${g.handle} · 📍 ${g.loc} · ${g.club}</div>
-            <div class="hcp-badge">Handicap <b>${g.hcp}</b></div>
+            <div class="profile-meta">
+              <span class="hcp-badge">Handicap <b>${g.hcp}</b></span>
+              <span class="conn"><b>${followerBase(g) + (isFollowing(g.id) ? 1 : 0)}</b> followers</span>
+              ${isMe ? `<span class="conn"><b>${ui.follows.size}</b> following</span>` : ""}
+            </div>
           </div>
-          <button class="btn ${isMe ? "outline" : "primary"}">${isMe ? "Edit profile" : "Follow"}</button>
+          ${isMe
+            ? `<button class="btn outline">Edit profile</button>`
+            : `<div class="profile-actions">
+                 <button class="btn ${isFollowing(g.id) ? "ghost" : "primary"}" data-act="follow" data-id="${g.id}">${isFollowing(g.id) ? "✓ Following" : "Follow"}</button>
+                 <button class="btn outline" data-act="message" data-id="${g.id}">Message</button>
+               </div>`}
         </div>
       </div>
 
@@ -532,8 +561,21 @@
       if (act === "cycle") {
         cycleResult(+actEl.dataset.mi); return;
       }
-      if (act === "follow") { actEl.textContent = actEl.textContent === "Follow" ? "Following" : "Follow"; actEl.classList.toggle("ghost"); return; }
-      if (act === "compose") { alert("In the full app this opens the composer — share a result, post photos, or spin up a new Ryder Cup day."); return; }
+      if (act === "follow") {
+        const id = actEl.dataset.id;
+        ui.follows.has(id) ? ui.follows.delete(id) : ui.follows.add(id);
+        persist(); render(); return;
+      }
+      if (act === "message") { toast(`Direct messages are coming soon — you'll be able to chat with ${golfer(actEl.dataset.id).name} to sort a game.`); return; }
+      if (act === "compose") { openModal("compose"); return; }
+      if (act === "modal-close" || act === "modal-cancel") { closeModal(); return; }
+      if (act === "create-day") { createDay(); return; }
+      if (act === "create-post") { createPost(); return; }
+      if (act === "fmt-toggle") { actEl.classList.toggle("on"); return; }
+      if (act === "tint-pick") {
+        document.querySelectorAll("[data-act='tint-pick']").forEach((b) => b.classList.remove("on"));
+        actEl.classList.add("on"); return;
+      }
     }
 
     if (navEl) {
@@ -542,8 +584,20 @@
     }
   });
 
-  document.querySelector("#newDay").addEventListener("click", () =>
-    alert("In the full app this launches the day-out builder: pick a course, invite your society, choose your formats, and Ryder generates the match sheet."));
+  // submit a comment with Enter
+  document.addEventListener("keydown", (ev) => {
+    const input = ev.target.closest("[data-comment]");
+    if (input && ev.key === "Enter") {
+      ev.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      const pid = input.dataset.comment;
+      (ui.comments[pid] = ui.comments[pid] || []).push({ by: ME, text, time: now() });
+      persist(); render();
+    }
+  });
+
+  document.querySelector("#newDay").addEventListener("click", () => openModal("newday"));
 
   // ---- on-the-day result editing for the live event ---------------
   function liveEventMatches() {
@@ -564,6 +618,124 @@
     Object.assign(m, { thru: undefined, state: undefined }, order[(cur + 1) % order.length]);
     render();
   }
+
+  // ===================================================================
+  //  MODALS — compose a post & build a new day out
+  // ===================================================================
+  const overlay = document.createElement("div");
+  overlay.className = "overlay";
+  overlay.hidden = true;
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+  document.body.appendChild(overlay);
+
+  function closeModal() { overlay.hidden = true; overlay.innerHTML = ""; }
+  function openModal(type) {
+    overlay.innerHTML = type === "compose" ? composeModal() : newDayModal();
+    overlay.hidden = false;
+    const first = overlay.querySelector("input, textarea, select");
+    if (first) first.focus();
+  }
+
+  function composeModal() {
+    const tints = ["green", "blue", "amber", "violet", "teal"];
+    return `<div class="modal">
+      <div class="modal-head">
+        <div class="composer-id">${av(ME, 40)}<div><b>${me().name}</b><div class="muted" style="font-size:12.5px">Posting to your feed</div></div></div>
+        <button class="icon-btn" data-act="modal-close" aria-label="Close">✕</button>
+      </div>
+      <textarea id="postText" class="post-input" rows="4" placeholder="Share a result, a photo from the day, or rally a fourball…"></textarea>
+      <div class="tint-row">
+        <span class="muted" style="font-size:12.5px">Add a photo vibe:</span>
+        ${tints.map((t, i) => `<button class="tint ${i === 0 ? "on" : ""}" data-act="tint-pick" data-tint="${t}" style="background:${grad(t)}" title="${t}"></button>`).join("")}
+        <button class="tint none" data-act="tint-pick" data-tint="" title="No photo">∅</button>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" data-act="modal-cancel">Cancel</button>
+        <button class="btn primary" data-act="create-post">Post</button>
+      </div>
+    </div>`;
+  }
+
+  function newDayModal() {
+    const mySocs = data.societies.filter((s) => isMember(s.id));
+    const fmts = ["Fourballs", "Foursomes", "Singles"];
+    return `<div class="modal wide">
+      <div class="modal-head">
+        <div><h3 style="margin:0">Organise a day out</h3><div class="muted" style="font-size:13px">Set it up and your society gets the invite in their feed.</div></div>
+        <button class="icon-btn" data-act="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="form-grid">
+        <label class="fld span2"><span>Event name</span><input id="ndTitle" type="text" placeholder="e.g. The Heathland Cup" value="The Autumn Clash" /></label>
+        <label class="fld"><span>Course / venue</span><input id="ndVenue" type="text" placeholder="Which course?" value="Saunton GC — East" /></label>
+        <label class="fld"><span>Date</span><input id="ndDate" type="text" placeholder="e.g. Sat 12 Sept 2026" value="Sat 26 Sept 2026" /></label>
+        <label class="fld"><span>Host society</span><select id="ndSoc">${mySocs.map((s) => `<option value="${s.id}">${s.name}</option>`).join("")}</select></label>
+        <label class="fld"><span>Total spots</span><input id="ndCap" type="number" min="2" value="12" /></label>
+        <div class="fld span2"><span>Formats</span>
+          <div class="fmt-grid">${fmts.map((f, i) => `<button type="button" class="fmt-pill ${i < 3 ? "on" : ""}" data-act="fmt-toggle" data-fmt="${f}">${f}</button>`).join("")}</div>
+        </div>
+        <label class="fld span2"><span>A note for your players</span><input id="ndNote" type="text" placeholder="Cost, format, plans for after…" value="Two-team matchplay then food in the clubhouse. All welcome!" /></label>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" data-act="modal-cancel">Cancel</button>
+        <button class="btn primary" data-act="create-day">Create day &amp; post invite</button>
+      </div>
+    </div>`;
+  }
+
+  function createPost() {
+    const text = (document.querySelector("#postText").value || "").trim();
+    const tintBtn = overlay.querySelector("[data-act='tint-pick'].on");
+    const tint = tintBtn ? tintBtn.dataset.tint : "";
+    if (!text && !tint) { closeModal(); return; }
+    const post = tint
+      ? { id: "u" + Date.now(), type: "photo", authorGolfer: ME, time: now(), tint, caption: "On the course", text: text || "A cracking day out ⛳", reactions: {}, comments: [] }
+      : { id: "u" + Date.now(), type: "text", authorGolfer: ME, time: now(), text, reactions: {}, comments: [] };
+    ui.posts.unshift(post);
+    data.feed.unshift(post);
+    persist(); closeModal(); nav("feed");
+    toast("Posted to your feed.");
+  }
+
+  function createDay() {
+    const v = (id) => document.querySelector(id).value.trim();
+    const title = v("#ndTitle") || "New day out";
+    const venue = v("#ndVenue") || "TBC";
+    const date = v("#ndDate") || "Date TBC";
+    const socId = document.querySelector("#ndSoc").value;
+    const cap = Math.max(2, parseInt(document.querySelector("#ndCap").value, 10) || 12);
+    const formats = [...overlay.querySelectorAll(".fmt-pill.on")].map((b) => b.dataset.fmt);
+    const eid = "u" + Date.now();
+
+    data.events.push({
+      id: eid, title, societyId: socId, venue, date, when: "upcoming", status: "upcoming",
+      capacity: cap, attendees: [ME], formats: formats.length ? formats : ["Singles"],
+      note: v("#ndNote"),
+    });
+    ui.events.push(data.events[data.events.length - 1]);
+
+    const post = {
+      id: "p" + eid, type: "event", authorSociety: socId, eventId: eid, time: now(),
+      text: `New day out just dropped — ${title} at ${venue} on ${date}. ${cap} spots up for grabs, who's in? ⛳`,
+      reactions: {}, comments: [],
+    };
+    ui.posts.unshift(post);
+    data.feed.unshift(post);
+    persist(); closeModal(); nav("event", eid);
+    toast("Your day out is live — invite posted to the feed.");
+  }
+
+  // ---- lightweight toast -----------------------------------------
+  let toastTimer;
+  function toast(msg) {
+    let el = document.querySelector("#toast");
+    if (!el) { el = document.createElement("div"); el.id = "toast"; document.body.appendChild(el); }
+    el.textContent = msg; el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 3200);
+  }
+
+  // close modal on Escape
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) closeModal(); });
 
   render();
 })();

@@ -17,13 +17,17 @@ with a live team scoreboard and a feed full of results, photos and banter.
 ## What it does today
 
 - **Feed** — a social timeline of event invites, final results, course photos
-  and banter, with emoji reactions and comments.
+  and banter. **React, comment and post** — it's all interactive.
+- **Organise a day out** — the **＋ New day** builder: name it, pick the course,
+  date, host society, capacity and formats. It creates the event *and* posts
+  the invite to your society's feed in one go.
+- **Compose** — share a text update or a photo post to your feed.
 - **Discover** — find **societies near you**, **open days** you can jump
-  straight into, and **players** in your area to follow.
+  straight into, and **players** in your area to **follow**.
 - **Society pages** — cover, members, upcoming days out and an **honours board**
   of past winners; one tap to join.
-- **Profiles** — handicap, home club, win/loss record, recent form and the
-  societies a golfer belongs to.
+- **Profiles** — handicap, home club, win/loss record, recent form, follower
+  counts and the societies a golfer belongs to.
 - **Events** — RSVP to a day out, see who's going, and follow the **live Ryder
   Cup scoreboard**:
   - The three classic formats — **Fourballs**, **Foursomes**, **Singles**
@@ -31,7 +35,8 @@ with a live team scoreboard and a feed full of results, photos and banter.
   - Tap any match result to update it on the day; everything recalculates live
 - **My days** — your live and upcoming events in one place.
 
-Joins, RSVPs and reactions persist locally in the browser (`localStorage`).
+Everything you do — created days, posts, comments, joins, RSVPs, follows and
+reactions — persists locally in the browser (`localStorage`).
 
 ## Run it
 
@@ -54,12 +59,13 @@ python3 -m http.server 8000
 
 ## Where it goes next
 
-- Accounts, real invites (WhatsApp/email) and notifications
-- A proper composer: post results, upload photos, spin up a day out
-- A day-out builder: pick a course, invite the society, auto-balance pairings
+- A backend so it's genuinely multiplayer — shared events, a real-time
+  scoreboard everyone watches together, and accounts/auth
+- Real invites & notifications (WhatsApp/email) and direct messages
+- Auto-balanced, handicap-fair pairings generated from the team sheets
+- Photo uploads (today's "photo" posts use a colour vibe placeholder)
 - Hole-by-hole live scoring entered from the course
 - Maps & location search for societies and open days near you
-- A backend with a shared real-time scoreboard everyone watches together
 
 ---
 
