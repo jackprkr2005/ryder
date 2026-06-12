@@ -85,9 +85,12 @@ WebSockets** with accounts, shared data and live updates. Run it with
 account (handle `jackp` / password `golf`). It's verified end-to-end: two
 accounts share state and a change by one is broadcast live to the other.
 
-The static front-end still runs stand-alone on `localStorage` (so it can be
-hosted on GitHub Pages). Wiring it to this API + `/ws` — with a graceful local
-fallback — is the next step to make bookings, payments and chat genuinely shared.
+The front-end is **wired to it**: when the app is served by the backend it runs
+in online mode (login/register, shared feed, events, chat and realtime over
+`/ws`); with no backend it falls back to the stand-alone demo, so GitHub Pages
+keeps working. Deploy the whole thing as one service — **Render** (via
+`render.yaml`) or **Docker** (`docker build -t ryder . && docker run -p 3000:3000
+ryder`). See [`server/README.md`](server/README.md) for details.
 
 ## Where it goes next
 

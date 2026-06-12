@@ -12,6 +12,14 @@ const { db, hashPassword } = require("./db");
 
 const app = express();
 app.use(express.json());
+// allow a separately-hosted front-end to call the API
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
 app.use(express.static(path.join(__dirname, ".."))); // serve the front-end too
 
 const PORT = process.env.PORT || 3000;
@@ -112,6 +120,13 @@ app.post("/api/rsvp", ...mut((req) => {
   const going = db.prepare("SELECT 1 FROM event_attendees WHERE event_id=? AND user_id=?").get(eventId, me);
   if (going) db.prepare("DELETE FROM event_attendees WHERE event_id=? AND user_id=?").run(eventId, me);
   else db.prepare("INSERT OR IGNORE INTO event_attendees (event_id,user_id) VALUES (?,?)").run(eventId, me);
+}));
+
+app.post("/api/join", ...mut((req) => {
+  const { societyId } = req.body, me = req.userId;
+  const has = db.prepare("SELECT 1 FROM society_members WHERE society_id=? AND user_id=?").get(societyId, me);
+  if (has) db.prepare("DELETE FROM society_members WHERE society_id=? AND user_id=?").run(societyId, me);
+  else db.prepare("INSERT OR IGNORE INTO society_members (society_id,user_id) VALUES (?,?)").run(societyId, me);
 }));
 
 app.post("/api/follow", ...mut((req) => {

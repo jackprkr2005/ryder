@@ -1,0 +1,22 @@
+# Render blueprint — deploy Ryder (backend + front-end) in one service.
+# In Render: New → Blueprint → connect this repo. It serves the app at the
+# service URL, with the REST API at /api and realtime at /ws.
+services:
+  - type: web
+    name: ryder
+    runtime: node
+    plan: free
+    buildCommand: cd server && npm install
+    startCommand: node --experimental-sqlite server/server.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+    # The SQLite database lives on disk. On the free plan the disk is
+    # ephemeral (data reseeds on each deploy). For persistence, upgrade the
+    # plan and uncomment the disk below (mounts where ryder.db is written):
+    # disk:
+    #   name: ryder-data
+    #   mountPath: /opt/render/project/src/server
+    #   sizeGB: 1

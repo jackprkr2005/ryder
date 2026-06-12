@@ -1,0 +1,63 @@
+/* ------------------------------------------------------------------
+   Ryder — API client (online mode)
+   When the app is served by the backend (same-origin /api responds),
+   the front-end runs against real accounts + shared data + realtime.
+   When there's no backend (e.g. GitHub Pages), it stays in demo mode.
+------------------------------------------------------------------ */
+window.RyderAPI = (function () {
+  "use strict";
+  const TOKEN_KEY = "ryder.token";
+  // Point the static site at a hosted backend by setting window.RYDER_API_BASE
+  // or <meta name="ryder-api" content="https://your-backend">. Default: same-origin.
+  const metaBase = (document.querySelector('meta[name="ryder-api"]') || {}).content;
+  const base = (window.RYDER_API_BASE || metaBase || "").replace(/\/$/, "");
+  let token = localStorage.getItem(TOKEN_KEY) || null;
+  let online = false;
+  let ws = null, onRefresh = null;
+
+  const headers = () => Object.assign({ "content-type": "application/json" }, token ? { authorization: "Bearer " + token } : {});
+  const setToken = (t) => { token = t; localStorage.setItem(TOKEN_KEY, t); };
+
+  async function detect() {
+    try {
+      const r = await fetch(base + "/api/health", { cache: "no-store" });
+      online = r.ok;
+    } catch { online = false; }
+    return online;
+  }
+
+  async function post(path, body) {
+    const r = await fetch(base + "/api" + path, { method: "POST", headers: headers(), body: JSON.stringify(body || {}) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || "Something went wrong");
+    return d;
+  }
+
+  async function login(handle, password) { const d = await post("/login", { handle, password }); setToken(d.token); return d; }
+  async function register(body) { const d = await post("/register", body); setToken(d.token); return d; }
+  function logout() { token = null; localStorage.removeItem(TOKEN_KEY); if (ws) { try { ws.close(); } catch {} } }
+
+  async function bootstrap() {
+    const r = await fetch(base + "/api/bootstrap", { headers: headers() });
+    if (r.status === 401) { logout(); throw new Error("unauthorized"); }
+    if (!r.ok) throw new Error("Could not load your data");
+    return r.json();
+  }
+
+  const mutate = (path, body) => post(path, body);
+
+  function wsURL() {
+    if (base) return base.replace(/^http/, "ws") + "/ws";
+    return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+  }
+  function connectWS(cb) {
+    onRefresh = cb;
+    try {
+      ws = new WebSocket(wsURL());
+      ws.onmessage = (e) => { try { const m = JSON.parse(e.data); if (m.type === "refresh" && onRefresh) onRefresh(m); } catch {} };
+      ws.onclose = () => { ws = null; setTimeout(() => connectWS(cb), 3000); };
+    } catch {}
+  }
+
+  return { detect, login, register, logout, bootstrap, mutate, connectWS, hasToken: () => !!token, isOnline: () => online };
+})();

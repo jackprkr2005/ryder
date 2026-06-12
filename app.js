@@ -7,7 +7,8 @@
 
   const STORE = "ryder.social.v1";
   const data = structuredClone(window.RYDER_SEED);
-  const ME = data.me;
+  let ME = data.me;
+  const ONLINE = () => window.RyderAPI && RyderAPI.isOnline();
 
   // UI state that the user can change (persisted)
   const ui = Object.assign(
@@ -30,13 +31,15 @@
     }));
 
   // merge any user-created content back into the working data set
-  (ui.events || []).forEach((e) => { if (!data.events.some((x) => x.id === e.id)) data.events.push(e); });
-  data.feed = [...(ui.posts || []), ...data.feed];
-  // re-apply any locked-in match sheets (captain's draft) onto their events
-  Object.entries(ui.sheets).forEach(([eid, sheet]) => {
-    const e = data.events.find((x) => x.id === eid);
-    if (e) { e.teams = sheet.teams; e.sessions = sheet.sessions; e.status = "live"; e.when = "Live now"; }
-  });
+  function applyLocalOverlays() {
+    (ui.events || []).forEach((e) => { if (!data.events.some((x) => x.id === e.id)) data.events.push(e); });
+    data.feed = [...(ui.posts || []), ...data.feed];
+    // re-apply any locked-in match sheets (captain's draft) onto their events
+    Object.entries(ui.sheets).forEach(([eid, sheet]) => {
+      const e = data.events.find((x) => x.id === eid);
+      if (e) { e.teams = sheet.teams; e.sessions = sheet.sessions; e.status = "live"; e.when = "Live now"; }
+    });
+  }
 
   let route = { view: "feed", id: null, tab: null };
 
@@ -996,7 +999,8 @@
     const m = me();
     const a = document.querySelector("#meAvatar");
     a.style.background = grad(m.colour); a.textContent = initials(m.name);
-    document.querySelector("#footMeta").textContent = `Signed in as ${m.name} · @${m.handle}`;
+    const foot = `Signed in as ${m.name} · @${m.handle}`;
+    document.querySelector("#footMeta").innerHTML = ONLINE() ? `${foot} · <span class="link" data-act="logout">Sign out</span>` : foot;
     window.scrollTo({ top: 0 });
     if (route.view === "courses") initCourseMap();
   }
@@ -1009,20 +1013,26 @@
 
     if (actEl) {
       const act = actEl.dataset.act;
+      if (act === "auth-submit") { submitAuth(actEl.dataset.mode); return; }
+      if (act === "auth-switch") { showAuth(actEl.dataset.mode); return; }
+      if (act === "logout") { RyderAPI.logout(); location.reload(); return; }
       if (act === "join") {
         const id = actEl.dataset.id;
+        if (ONLINE()) { syncMutate("/join", { societyId: id }); return; }
         if (society(id).members.includes(ME)) return; // already a core member
         ui.joined.has(id) ? ui.joined.delete(id) : ui.joined.add(id);
         persist(); render(); return;
       }
       if (act === "rsvp") {
         const id = actEl.dataset.id;
+        if (ONLINE()) { syncMutate("/rsvp", { eventId: id }); return; }
         if (event(id).attendees.includes(ME)) return;
         ui.going.has(id) ? ui.going.delete(id) : ui.going.add(id);
         persist(); render(); return;
       }
       if (act === "react") {
         const p = actEl.dataset.post, e = actEl.dataset.emoji;
+        if (ONLINE()) { syncMutate("/react", { postId: p, emoji: e }); return; }
         ui.react[p] = ui.react[p] === e ? null : e;
         persist(); render(); return;
       }
@@ -1031,6 +1041,7 @@
       }
       if (act === "follow") {
         const id = actEl.dataset.id;
+        if (ONLINE()) { syncMutate("/follow", { id }); return; }
         ui.follows.has(id) ? ui.follows.delete(id) : ui.follows.add(id);
         persist(); render(); return;
       }
@@ -1077,6 +1088,7 @@
     if (cin && ev.key === "Enter") {
       ev.preventDefault();
       const text = cin.value.trim(); if (!text) return;
+      if (ONLINE()) { cin.value = ""; syncMutate("/comment", { postId: cin.dataset.comment, text }); return; }
       (ui.comments[cin.dataset.comment] = ui.comments[cin.dataset.comment] || []).push({ by: ME, text, time: now() });
       persist(); render();
     }
@@ -1085,8 +1097,15 @@
       ev.preventDefault();
       const text = chat.value.trim(); if (!text) return;
       const eid = chat.dataset.chat;
+      if (ONLINE()) { chat.value = ""; syncMutate("/chat", { eventId: eid, text }); return; }
       (ui.chats[eid] = ui.chats[eid] || []).push({ by: ME, text, time: now() });
       persist(); render();
+    }
+    const ain = ev.target.closest(".auth-in");
+    if (ain && ev.key === "Enter") {
+      ev.preventDefault();
+      const go = document.querySelector("[data-act='auth-submit']");
+      if (go) submitAuth(go.dataset.mode);
     }
   });
 
@@ -1228,6 +1247,13 @@
     const tintBtn = overlay.querySelector("[data-act='tint-pick'].on");
     const tint = tintBtn ? tintBtn.dataset.tint : "";
     if (!text && !tint) { closeModal(); return; }
+    if (ONLINE()) {
+      closeModal();
+      RyderAPI.mutate("/post", { text: text || "A cracking day out ⛳", tint: tint || "" })
+        .then(loadFromServer).then(() => { nav("feed"); toast("Posted to your feed."); })
+        .catch((e) => toast(e.message || "Couldn't post"));
+      return;
+    }
     const post = tint
       ? { id: "u" + Date.now(), type: "photo", authorGolfer: ME, time: now(), tint, caption: "On the course", text: text || "A cracking day out ⛳", reactions: {}, comments: [] }
       : { id: "u" + Date.now(), type: "text", authorGolfer: ME, time: now(), text, reactions: {}, comments: [] };
@@ -1279,5 +1305,101 @@
   // close modal on Escape
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) closeModal(); });
 
-  render();
+  // ===================================================================
+  //  ONLINE MODE — real accounts, shared data, realtime
+  //  (active only when the app is served by the backend; otherwise the
+  //   app stays in local demo mode and these are never called.)
+  // ===================================================================
+  function mapFeedPost(p) {
+    // server reaction counts already include mine; reactCount() re-adds the
+    // local +1 from ui.react, so strip mine here to avoid double-counting.
+    const reactions = Object.assign({}, p.reactions);
+    if (p.myReaction && reactions[p.myReaction]) reactions[p.myReaction] -= 1;
+    return Object.assign({}, p, { reactions });
+  }
+  async function loadFromServer() {
+    const b = await RyderAPI.bootstrap();
+    ME = b.me.id;
+    data.golfers = b.golfers;
+    data.societies = b.societies.map((s) => Object.assign({}, s, { members: s.memberIds || [] }));
+    data.events = b.events.map((e) => Object.assign({}, e, { attendees: e.attendeeIds || [] }));
+    data.feed = b.feed.map(mapFeedPost);
+    // identity-derived state comes from the server
+    ui.follows = new Set(b.me.following || []);
+    ui.going = new Set();
+    ui.joined = new Set();
+    ui.react = {};
+    b.feed.forEach((p) => { if (p.myReaction) ui.react[p.id] = p.myReaction; });
+    ui.chats = b.chats || {};
+    ui.comments = {};
+    ui.posts = [];
+    applyLocalOverlays(); // local-only: created days, booking/payment overlays, locked sheets
+  }
+  function syncMutate(path, body) {
+    RyderAPI.mutate(path, body).then(loadFromServer).then(render)
+      .catch((e) => toast(e.message || "Couldn't reach the server"));
+  }
+
+  function showAuth(mode) {
+    document.body.classList.add("auth-mode");
+    const reg = mode === "register";
+    document.querySelector("#main").innerHTML = `
+      <div class="auth-wrap">
+        <div class="auth-card card">
+          <div class="auth-logo"><span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4l11 3-11 3" fill="currentColor" stroke="none"/><line x1="5" y1="21" x2="5" y2="3"/></svg>
+          </span><strong>Ryder</strong></div>
+          <h2>${reg ? "Create your account" : "Sign in"}</h2>
+          <p class="muted auth-sub">${reg ? "Pick a handle and you're in — your days, society and chat, shared live." : "Your days, society and chat — shared live with real people."}</p>
+          <div id="authErr" class="auth-err" hidden></div>
+          ${reg ? `<input id="auName" class="auth-in" placeholder="Your name" autocomplete="name" />` : ""}
+          <input id="auHandle" class="auth-in" placeholder="Handle (e.g. jackp)" autocapitalize="none" autocomplete="username" />
+          <input id="auPass" class="auth-in" type="password" placeholder="Password" autocomplete="${reg ? "new-password" : "current-password"}" />
+          ${reg ? `<input id="auClub" class="auth-in" placeholder="Home club (optional)" />` : ""}
+          <button class="btn primary auth-go" data-act="auth-submit" data-mode="${reg ? "register" : "login"}">${reg ? "Create account" : "Sign in"}</button>
+          <p class="auth-alt">${reg ? "Already have an account?" : "New here?"}
+            <span class="link" data-act="auth-switch" data-mode="${reg ? "login" : "register"}">${reg ? "Sign in" : "Create one"}</span></p>
+          ${reg ? "" : `<p class="auth-demo muted">Try the demo — handle <b>jackp</b>, password <b>golf</b></p>`}
+        </div>
+      </div>`;
+    setTimeout(() => { const el = document.querySelector(reg ? "#auName" : "#auHandle"); if (el) el.focus(); }, 30);
+  }
+  async function submitAuth(mode) {
+    const err = document.querySelector("#authErr");
+    const val = (s) => (document.querySelector(s) ? document.querySelector(s).value : "").trim();
+    const handle = val("#auHandle"), password = (document.querySelector("#auPass") || {}).value || "";
+    try {
+      if (mode === "register") {
+        const name = val("#auName"), club = val("#auClub");
+        if (!name || !handle || !password) throw new Error("Name, handle and password are needed");
+        await RyderAPI.register({ name, handle, password, club });
+      } else {
+        if (!handle || !password) throw new Error("Enter your handle and password");
+        await RyderAPI.login(handle, password);
+      }
+      await loadFromServer();
+      RyderAPI.connectWS(() => { loadFromServer().then(render).catch(() => {}); });
+      document.body.classList.remove("auth-mode");
+      route = { view: "feed", id: null, tab: null };
+      render();
+    } catch (e) {
+      if (err) { err.textContent = e.message || "That didn't work"; err.hidden = false; }
+    }
+  }
+
+  async function start() {
+    try { await RyderAPI.detect(); } catch {}
+    if (ONLINE()) {
+      if (!RyderAPI.hasToken()) return showAuth();
+      try { await loadFromServer(); }
+      catch { return showAuth(); }
+      RyderAPI.connectWS(() => { loadFromServer().then(render).catch(() => {}); });
+      document.body.classList.remove("auth-mode");
+      return render();
+    }
+    applyLocalOverlays(); // demo mode: local seed + localStorage
+    render();
+  }
+
+  start();
 })();

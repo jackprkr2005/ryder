@@ -51,13 +51,39 @@ whenever anyone changes shared state — the client then re-fetches `/api/bootst
 `users`, `societies` + `society_members`, `events` + `event_attendees`, `posts`,
 `comments`, `reactions`, `follows`, `chats`, `tokens`. (See `db.js`.)
 
-## Status / next step
+## Deploy it
 
-This is the **foundation**. The front-end in the repo root currently runs
-stand-alone on `localStorage` (so it can be hosted as a static site). The next
-step is to point it at this API + WebSocket — fetch `/api/bootstrap` on load,
-send mutations to the endpoints above, and re-fetch on each `refresh` — with a
-graceful fallback to local mode when no backend is present.
+The container serves the **front-end + API + WebSocket from one port**, so a
+single web service is all you need.
 
-Once that's wired, booking enquiries, payments and chat become genuinely
-shared and live between real people.
+**Render (one click):** New → Blueprint → pick this repo. `render.yaml` builds
+and starts it, with a health check on `/api/health`. The app is then live at the
+service URL with real logins. (On the free plan the SQLite disk is ephemeral, so
+data reseeds on each deploy — uncomment the `disk:` block in `render.yaml` on a
+paid plan to persist it.)
+
+**Docker (Railway / Fly / anywhere):**
+
+```bash
+docker build -t ryder .
+docker run -p 3000:3000 ryder    # → http://localhost:3000
+```
+
+**Pointing the static site at a hosted backend (optional):** the GitHub Pages
+build is same-origin, so it stays in demo mode. To make it use a deployed
+backend instead, set a base URL before `app.js` loads — either
+`<meta name="ryder-api" content="https://your-backend.onrender.com">` in
+`index.html`, or `window.RYDER_API_BASE = "https://…"`. CORS is already enabled.
+
+## How the front-end uses it
+
+On load the app probes `/api/health`. If a backend answers it runs in **online
+mode**: a login / register screen, then `GET /api/bootstrap`, with every social
+action (post, react, comment, follow, RSVP, society join, day chat) POSTed to the
+API and re-synced live on each `refresh` from `/ws`. With no backend it falls
+back to the stand-alone **demo** (localStorage), so GitHub Pages keeps working.
+
+Shared & live today: accounts, profiles, feed, reactions, comments, follows,
+society membership, event RSVPs and day chat. Course booking, the pot/payments
+and the captain's match-sheet currently remain per-user client-side overlays —
+the next step is backing those with their own tables here.

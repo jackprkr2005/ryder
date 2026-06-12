@@ -680,3 +680,31 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
     padding-bottom: max(56px, env(safe-area-inset-bottom));
   }
 }
+
+/* ============================================================
+   ONLINE MODE — auth screen
+   ============================================================ */
+body.auth-mode .search,
+body.auth-mode .tabs,
+body.auth-mode #newDay,
+body.auth-mode #meAvatar { display: none; }
+body.auth-mode .topbar { justify-content: center; }
+
+.auth-wrap { display: grid; place-items: center; min-height: 70vh; padding: 20px 0; }
+.auth-card { width: 100%; max-width: 380px; padding: 30px 28px 26px; text-align: center; }
+.auth-logo { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 18px; }
+.auth-logo strong { font-family: var(--display); font-weight: 600; font-size: 22px; color: var(--green); }
+.auth-card h2 { margin: 0 0 6px; font-size: 23px; }
+.auth-sub { font-size: 13.5px; margin: 0 auto 18px; max-width: 30ch; line-height: 1.5; }
+.auth-in {
+  width: 100%; border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: 12px 14px; font: inherit; font-size: 15px; margin-bottom: 10px; background: var(--bg); outline: 0;
+}
+.auth-in:focus { border-color: var(--green); background: var(--paper); }
+.auth-go { width: 100%; justify-content: center; padding: 12px; margin-top: 4px; font-size: 15px; }
+.auth-alt { font-size: 13.5px; color: var(--ink-soft); margin: 16px 0 0; }
+.auth-alt .link, .auth-err .link { font-weight: 700; }
+.auth-demo { font-size: 12.5px; margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
+.auth-err { background: var(--red-soft); color: var(--red-deep); border: 1px solid #e7cdd1; border-radius: var(--r-sm); padding: 9px 12px; font-size: 13px; margin-bottom: 12px; text-align: left; }
+.link { color: var(--green); cursor: pointer; text-decoration: none; }
+.link:hover { text-decoration: underline; }
