@@ -11,7 +11,7 @@
 
   // UI state that the user can change (persisted)
   const ui = Object.assign(
-    { joined: [], going: [], react: {}, follows: [], posts: [], events: [], comments: {}, sheets: {} },
+    { joined: [], going: [], react: {}, follows: [], posts: [], events: [], comments: {}, sheets: {}, bookings: {} },
     (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } })()
   );
   ui.joined = new Set(ui.joined);
@@ -19,10 +19,11 @@
   ui.follows = new Set(ui.follows);
   ui.comments = ui.comments || {};
   ui.sheets = ui.sheets || {};
+  ui.bookings = ui.bookings || {};
   const persist = () =>
     localStorage.setItem(STORE, JSON.stringify({
       joined: [...ui.joined], going: [...ui.going], react: ui.react,
-      follows: [...ui.follows], posts: ui.posts, events: ui.events, comments: ui.comments, sheets: ui.sheets,
+      follows: [...ui.follows], posts: ui.posts, events: ui.events, comments: ui.comments, sheets: ui.sheets, bookings: ui.bookings,
     }));
 
   // merge any user-created content back into the working data set
@@ -138,13 +139,18 @@
     const filled = goingCount(e), pct = Math.round((filled / e.capacity) * 100);
     const going = isGoing(eid);
     const tags = (e.formats || []).map((f) => `<span class="chip">${f}</span>`).join("");
+    const bk = bookingOf(e);
+    const bkLabel = { planning: "Unbooked", enquiry: "Enquiry sent", provisional: "Date held", confirmed: "Booked" }[bk.status];
     return `<div class="event-mini" data-nav="event" data-id="${eid}">
       <div class="em-top">
         <div>
           <div class="em-title">${e.title}</div>
           <div class="em-meta">${e.date} · ${e.venue}</div>
         </div>
-        <span class="em-status ${e.status}">${e.status === "open" ? "Open day" : e.when}</span>
+        <div class="em-rt">
+          <span class="em-status ${e.status}">${e.status === "open" ? "Open day" : e.when}</span>
+          ${!e.sessions ? `<span class="bk-mini ${bk.status}">${bkLabel}</span>` : ""}
+        </div>
       </div>
       ${tags ? `<div class="chips">${tags}</div>` : ""}
       <div class="em-fill"><span style="width:${pct}%;background:${grad(s.colour)}"></span></div>
@@ -435,6 +441,68 @@
     return { b, r };
   }
 
+  // ===================================================================
+  //  COURSE BOOKING — enquire · hold · confirm
+  // ===================================================================
+  const courseForEvent = (e) => e.courseId ? course(e.courseId) : data.courses.find((c) => (e.venue || "").includes(c.match));
+  const bookingOf = (e) => Object.assign({ status: "planning" }, e.booking || {}, ui.bookings[e.id] || {});
+  const gbp = (n) => "£" + Math.round(n).toLocaleString("en-GB");
+  const bkDone = (st) => ({ planning: 0, enquiry: 1, provisional: 2, confirmed: 3 }[st] || 0);
+  const BK_STEPS = ["Enquiry sent", "Date held & quoted", "Confirmed & booked"];
+  function bookingMailto(e, c) {
+    const subj = `Society booking enquiry — ${e.title}`;
+    const body = `Hi ${c ? c.booking.contact : "there"},\n\nWe'd like to book a society day for ${goingCount(e)} players at ${e.venue} on ${e.date}.\nFormat: a morning round then afternoon singles (Ryder Cup style).\n\nCould you let us know availability, the society rate, and what you need to hold and confirm the date?\n\nMany thanks,\n${me().name}\n${society(e.societyId).name}`;
+    return `mailto:${c ? c.booking.email : ""}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+  }
+  function bookingPanel(e) {
+    const c = courseForEvent(e);
+    const bk = bookingOf(e);
+    const done = bkDone(bk.status);
+    const players = bk.players || goingCount(e);
+    const rate = c ? c.booking.rate : 0;
+    const total = rate * players;
+    const steps = BK_STEPS.map((t, i) =>
+      `<div class="bk-step ${i < done ? "done" : ""} ${i === done ? "now" : ""}"><span class="bk-num">${i < done ? "✓" : i + 1}</span>${t}</div>`).join("");
+
+    let body;
+    if (bk.status === "confirmed") {
+      body = `<div class="bk-confirmed"><span class="bk-tick">✓</span>
+        <div><b>Booked &amp; confirmed${c ? ` with ${c.name}` : ""}</b>
+        <div class="muted">Ref ${bk.ref || "—"} · ${players} players${bk.teeWindow ? ` · tee ${bk.teeWindow}` : ""}${total ? ` · ${gbp(total)}` : ""}</div></div>
+        ${c ? `<a class="btn outline xs" href="${bookingMailto(e, c)}">Email the club</a>` : ""}</div>`;
+    } else if (bk.status === "provisional") {
+      body = `<p class="bk-line"><b>${c ? c.name : "The club"} can hold ${e.date}</b> for your group — pencilled in, awaiting confirmation.</p>
+        <div class="bk-figures">
+          <div><span>Society rate</span><b>${c ? gbp(rate) + " pp" : "—"}</b></div>
+          <div><span>${players} players</span><b>${total ? gbp(total) : "—"}</b></div>
+          <div><span>Deposit to confirm</span><b>${c ? gbp(c.booking.deposit) : "—"}</b></div>
+        </div>
+        <div class="bk-actions"><button class="btn primary sm" data-act="confirm-booking" data-id="${e.id}">Confirm &amp; pay deposit</button>
+          ${c ? `<a class="btn outline sm" href="${bookingMailto(e, c)}">Email the club</a>` : ""}</div>`;
+    } else {
+      body = `<p class="bk-line">No date booked yet. Send an enquiry to ${c ? `<b>${c.booking.contact}</b> (${c.booking.role}) at <b>${c.name}</b>` : "the club"} to hold your date.</p>
+        <div class="bk-actions"><button class="btn primary sm" data-act="enquire" data-id="${e.id}">Send booking enquiry</button>
+          ${c ? `<a class="btn outline sm" href="${bookingMailto(e, c)}">Email directly</a>` : ""}</div>`;
+    }
+
+    const tag = { planning: "Not booked", enquiry: "Enquiry sent", provisional: "Provisionally held", confirmed: "Confirmed" }[bk.status];
+    const contact = c ? `<details class="bk-contact"><summary>Club booking details</summary>
+        <div class="bk-contact-row"><span>Contact</span><b>${c.booking.contact} · ${c.booking.role}</b></div>
+        <div class="bk-contact-row"><span>Phone</span><b>${c.booking.phone}</b></div>
+        <div class="bk-contact-row"><span>Email</span><b>${c.booking.email}</b></div>
+        <div class="bk-contact-row"><span>Society days</span><b>${c.booking.days}</b></div>
+        <div class="bk-contact-row"><span>Min group · notice</span><b>${c.booking.minGroup} players · ${c.booking.lead}</b></div>
+        <div class="bk-contact-row"><span>Catering</span><b>${c.booking.catering}</b></div>
+        <div class="bk-demo">Sample booking details for the demo.</div></details>` : "";
+
+    return `<div class="card booking">
+      <div class="bk-head"><div><div class="bk-eyebrow">Course booking</div><div class="bk-venue">${e.venue}</div></div>
+        <span class="bk-status ${bk.status}">${tag}</span></div>
+      <div class="bk-steps">${steps}</div>
+      ${body}${contact}
+    </div>`;
+  }
+
   function viewEvent() {
     const e = event(route.id);
     const s = society(e.societyId);
@@ -443,7 +511,8 @@
     // --- upcoming / open: RSVP-focused layout (no match sheet yet) ---
     if (!e.sessions) {
       const filled = goingCount(e), pct = Math.round((filled / e.capacity) * 100);
-      const canBuild = filled >= 4;
+      const confirmed = bookingOf(e).status === "confirmed";
+      const canBuild = confirmed && filled >= 4;
       return `<div class="view">
         <div class="card profile-head">
           <div class="cover" style="background:${grad(s.colour)}"></div>
@@ -465,10 +534,14 @@
           <div class="muted" style="margin-top:8px">${filled} of ${e.capacity} spots filled — ${e.capacity - filled} left</div>
         </div>
 
+        ${bookingPanel(e)}
+
         <div class="card captain-cta">
           <div>
             <div class="cc-eyebrow">Captain's room</div>
-            <div class="cc-line">Auto-build two balanced teams and a full Ryder Cup match sheet from who's in.</div>
+            <div class="cc-line">${confirmed
+              ? "Auto-build two balanced teams and a full Ryder Cup match sheet from who's in."
+              : "Lock in your course booking first — then build two balanced teams and the match sheet here."}</div>
           </div>
           <button class="btn primary" data-act="build-sheet" data-id="${e.id}" ${canBuild ? "" : "disabled"}>Build the match sheet</button>
         </div>
@@ -874,6 +947,9 @@
       if (act === "build-sheet") { nav("draft", actEl.dataset.id); return; }
       if (act === "reshuffle") { draftSeed = (draftSeed + 1) % 9973; render(); return; }
       if (act === "lock-sheet") { lockSheet(actEl.dataset.id); return; }
+      if (act === "enquire") { openModal("enquiry", { eventId: actEl.dataset.id }); return; }
+      if (act === "send-enquiry") { sendEnquiry(); return; }
+      if (act === "confirm-booking") { confirmBooking(actEl.dataset.id); return; }
       if (act === "compose") { openModal("compose"); return; }
       if (act === "modal-close" || act === "modal-cancel") { closeModal(); return; }
       if (act === "create-day") { createDay(); return; }
@@ -936,11 +1012,58 @@
   document.body.appendChild(overlay);
 
   function closeModal() { overlay.hidden = true; overlay.innerHTML = ""; }
+  let enquiryEid = null;
   function openModal(type, opts = {}) {
-    overlay.innerHTML = type === "compose" ? composeModal() : newDayModal(opts.venue);
+    enquiryEid = type === "enquiry" ? opts.eventId : null;
+    overlay.innerHTML = type === "compose" ? composeModal()
+      : type === "enquiry" ? enquiryModal(event(opts.eventId))
+      : newDayModal(opts.venue);
     overlay.hidden = false;
     const first = overlay.querySelector("input, textarea, select");
     if (first) first.focus();
+  }
+
+  function enquiryModal(e) {
+    const c = courseForEvent(e);
+    const players = goingCount(e);
+    return `<div class="modal wide">
+      <div class="modal-head">
+        <div><h3 style="margin:0">Booking enquiry</h3><div class="muted" style="font-size:13px">${c ? `To ${c.booking.contact} · ${c.name}` : e.venue}</div></div>
+        <button class="icon-btn" data-act="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="form-grid">
+        <label class="fld"><span>Preferred date</span><input id="enqDate" type="text" value="${e.date}" /></label>
+        <label class="fld"><span>Players</span><input id="enqPlayers" type="number" min="2" value="${players}" /></label>
+        <label class="fld span2"><span>Message to the club</span><input id="enqMsg" type="text" value="Morning round then afternoon singles (Ryder Cup style). Could you hold the date and send a society quote?" /></label>
+      </div>
+      ${c ? `<div class="bk-enq-note">Society rate ${gbp(c.booking.rate)} pp · min ${c.booking.minGroup} players · ${c.booking.lead} notice · ${c.booking.days}.</div>` : ""}
+      <div class="modal-foot">
+        ${c ? `<a class="btn ghost" href="${bookingMailto(e, c)}">Email instead</a>` : ""}
+        <button class="btn primary" data-act="send-enquiry">Send enquiry</button>
+      </div>
+    </div>`;
+  }
+  function sendEnquiry() {
+    const eid = enquiryEid; if (!eid) return;
+    const players = Math.max(2, parseInt((document.querySelector("#enqPlayers") || {}).value, 10) || goingCount(event(eid)));
+    ui.bookings[eid] = Object.assign({}, ui.bookings[eid], { status: "provisional", players });
+    persist(); closeModal(); nav("event", eid);
+    const c = courseForEvent(event(eid));
+    toast(c ? `Enquiry sent — ${c.name} can hold your date.` : "Enquiry sent.");
+  }
+  function confirmBooking(eid) {
+    const e = event(eid), c = courseForEvent(e);
+    const players = (ui.bookings[eid] && ui.bookings[eid].players) || goingCount(e);
+    const ref = "RYD-" + Math.floor(1000 + Math.random() * 9000);
+    ui.bookings[eid] = Object.assign({}, ui.bookings[eid], { status: "confirmed", players, ref, teeWindow: "08:00–08:40 & 13:00–13:50" });
+    persist();
+    // shout about it in the feed
+    const post = { id: "b" + Date.now(), type: "event", authorSociety: e.societyId, eventId: eid, time: now(),
+      text: `It's official — ${e.title} is booked${c ? ` at ${c.name}` : ""} for ${e.date}. Deposit's down, let's get the teams sorted! 🏌️`,
+      reactions: {}, comments: [] };
+    if (!data.feed.some((p) => p.eventId === eid && p.text.startsWith("It's official"))) { ui.posts.unshift(post); data.feed.unshift(post); persist(); }
+    render();
+    toast("Booking confirmed — deposit paid. Time to build the teams!");
   }
 
   function composeModal() {
@@ -1013,23 +1136,24 @@
     const cap = Math.max(2, parseInt(document.querySelector("#ndCap").value, 10) || 12);
     const formats = [...overlay.querySelectorAll(".fmt-pill.on")].map((b) => b.dataset.fmt);
     const eid = "u" + Date.now();
+    const matched = data.courses.find((c) => venue.includes(c.match));
 
     data.events.push({
       id: eid, title, societyId: socId, venue, date, when: "upcoming", status: "upcoming",
-      capacity: cap, attendees: [ME], formats: formats.length ? formats : ["Singles"],
-      note: v("#ndNote"),
+      capacity: cap, attendees: [ME], formats: formats.length ? formats : ["Fourballs", "Singles"],
+      note: v("#ndNote"), courseId: matched ? matched.id : null, booking: { status: "planning" },
     });
     ui.events.push(data.events[data.events.length - 1]);
 
     const post = {
       id: "p" + eid, type: "event", authorSociety: socId, eventId: eid, time: now(),
-      text: `New day out just dropped — ${title} at ${venue} on ${date}. ${cap} spots up for grabs, who's in? ⛳`,
+      text: `Planning a new day out — ${title} at ${venue} on ${date}. Sorting the course booking now; ${cap} spots, who's in? ⛳`,
       reactions: {}, comments: [],
     };
     ui.posts.unshift(post);
     data.feed.unshift(post);
     persist(); closeModal(); nav("event", eid);
-    toast("Your day out is live — invite posted to the feed.");
+    toast("Day created — next step: book the course.");
   }
 
   // ---- lightweight toast -----------------------------------------

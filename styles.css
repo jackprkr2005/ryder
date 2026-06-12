@@ -559,3 +559,58 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
 }
 
 .fld > span em { font-style: normal; font-weight: 500; color: var(--ink-soft); opacity: .8; text-transform: none; letter-spacing: 0; }
+
+/* ============================================================
+   COURSE BOOKING
+   ============================================================ */
+.em-rt { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.bk-mini { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 3px 8px; border-radius: 999px; }
+.bk-mini.planning { background: #f0e7d4; color: #8a6b22; }
+.bk-mini.enquiry, .bk-mini.provisional { background: var(--brass-soft); color: #7a5a16; }
+.bk-mini.confirmed { background: var(--green-soft); color: var(--green); }
+
+.booking { padding: 18px 20px; margin-top: 14px; }
+.bk-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.bk-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--brass); font-weight: 800; }
+.bk-venue { font-family: var(--display); font-size: 18px; font-weight: 600; margin-top: 2px; }
+.bk-status { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 5px 11px; border-radius: 999px; white-space: nowrap; }
+.bk-status.planning { background: #f0e7d4; color: #8a6b22; }
+.bk-status.enquiry, .bk-status.provisional { background: var(--brass-soft); color: #7a5a16; }
+.bk-status.confirmed { background: var(--green-soft); color: var(--green); }
+
+.bk-steps { display: flex; gap: 8px; margin: 16px 0; }
+.bk-step { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--ink-soft);
+  padding: 9px 11px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg); }
+.bk-step .bk-num { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; font-weight: 800;
+  background: #e3dccc; color: var(--ink-soft); flex: none; }
+.bk-step.done { color: var(--green); border-color: #cfe0cf; background: var(--green-soft); }
+.bk-step.done .bk-num { background: var(--green); color: #fff; }
+.bk-step.now { border-color: var(--brass); background: var(--brass-soft); color: #7a5a16; }
+.bk-step.now .bk-num { background: var(--brass); color: #fff; }
+
+.bk-line { font-size: 14px; line-height: 1.5; margin: 4px 0 12px; }
+.bk-figures { display: flex; gap: 10px; margin: 12px 0 14px; }
+.bk-figures div { flex: 1; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; background: var(--paper); }
+.bk-figures span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); }
+.bk-figures b { font-family: var(--display); font-size: 18px; font-weight: 600; }
+.bk-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.bk-confirmed { display: flex; align-items: center; gap: 12px; }
+.bk-tick { width: 34px; height: 34px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font-size: 17px; flex: none; }
+.bk-confirmed > div { flex: 1; }
+.bk-confirmed b { font-size: 14.5px; }
+
+.bk-contact { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.bk-contact summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--ink-soft); list-style: none; }
+.bk-contact summary::-webkit-details-marker { display: none; }
+.bk-contact summary::before { content: "+ "; color: var(--brass); font-weight: 800; }
+.bk-contact[open] summary::before { content: "– "; }
+.bk-contact-row { display: flex; justify-content: space-between; gap: 14px; font-size: 13px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.bk-contact-row span { color: var(--ink-soft); }
+.bk-contact-row b { text-align: right; font-weight: 600; }
+.bk-demo { font-size: 11.5px; color: var(--ink-soft); font-style: italic; margin-top: 9px; }
+.bk-enq-note { font-size: 12.5px; color: var(--ink-soft); margin-top: 12px; background: var(--bg); border-radius: var(--r-sm); padding: 10px 12px; }
+
+@media (max-width: 720px) {
+  .bk-steps { flex-direction: column; }
+  .bk-figures { flex-direction: column; }
+}

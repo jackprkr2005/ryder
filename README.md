@@ -30,6 +30,13 @@ with a live team scoreboard and a feed full of results, photos and banter.
   day here** to start a Ryder Cup day at that club. Built to push people to
   actually meet up and play. *(Falls back to an illustrated map if tiles can't
   load. Swappable for Google/Apple Maps if you add an API key.)*
+- **Course booking** — every day has to be **booked with a real club** before
+  it's on. Each event runs a booking lifecycle — **Planning → enquiry → date
+  held & quoted → confirmed** — with the club's booking contact (coordinator,
+  phone, email, society rate, deposit, lead time, catering), a one-tap **email
+  the club** (pre-filled enquiry), an auto-calculated quote, and a deposit step
+  to confirm. The **match sheet stays locked until the booking is confirmed**,
+  so a day gets planned and confirmed before anyone tees off.
 - **Captain's draft** — the Ryder Cup pairing engine. From everyone who's in, it
   **auto-builds two handicap-balanced teams** (snake draft), then **pairs players
   and seeds the match-ups** with **shot allocations** so every game stays close.
