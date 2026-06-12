@@ -35,6 +35,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS reactions ( post_id TEXT, user_id TEXT, emoji TEXT, PRIMARY KEY (post_id, user_id) );
   CREATE TABLE IF NOT EXISTS follows ( follower TEXT, followee TEXT, PRIMARY KEY (follower, followee) );
   CREATE TABLE IF NOT EXISTS chats ( id TEXT PRIMARY KEY, event_id TEXT, user_id TEXT, text TEXT, created_at INTEGER );
+  CREATE TABLE IF NOT EXISTS payments ( event_id TEXT, user_id TEXT, paid INTEGER DEFAULT 1, PRIMARY KEY (event_id, user_id) );
+  CREATE TABLE IF NOT EXISTS bookings ( event_id TEXT PRIMARY KEY, status TEXT, ref TEXT, tee_window TEXT, players INTEGER, rate INTEGER, updated_at INTEGER );
   CREATE TABLE IF NOT EXISTS tokens ( token TEXT PRIMARY KEY, user_id TEXT, created_at INTEGER );
 `);
 
@@ -67,6 +69,16 @@ if (!seeded) {
     insEv.run(e.id, e.title, e.societyId, e.venue, e.date, e.when || "", e.status, e.capacity, e.note || "", extra);
     (e.attendees || []).forEach((uid) => insAtt.run(e.id, uid));
   }
+  // course bookings + who's paid their share (per event)
+  const insBooking = db.prepare(`INSERT OR REPLACE INTO bookings (event_id,status,ref,tee_window,players,rate,updated_at) VALUES (?,?,?,?,?,?,?)`);
+  const insPay = db.prepare(`INSERT OR IGNORE INTO payments (event_id,user_id,paid) VALUES (?,?,1)`);
+  insBooking.run("ev1", "confirmed", "RYD-7741", "08:00–08:40 & 13:00–13:50", 12, 78, now);
+  ["p1","p2","p3","p4","p5","p6","p7","p8","p9","p10","p11","p12"].forEach((u) => insPay.run("ev1", u));
+  insBooking.run("ev2", "provisional", null, null, 9, 70, now);
+  ["p1","p2","p7","p10"].forEach((u) => insPay.run("ev2", u));
+  insBooking.run("ev3", "confirmed", "TC-2231", "09:00–09:40 & 13:30–14:10", 12, 38, now);
+  ["p7","p10"].forEach((u) => insPay.run("ev3", u));
+
   const insPost = db.prepare(`INSERT INTO posts (id,type,author_user,author_society,event_id,text,tint,caption,result,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`);
   const insReact = db.prepare(`INSERT OR IGNORE INTO reactions (post_id,user_id,emoji) VALUES (?,?,?)`);
   const insCom = db.prepare(`INSERT INTO comments (id,post_id,user_id,text,created_at) VALUES (?,?,?,?,?)`);

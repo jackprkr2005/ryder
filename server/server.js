@@ -84,10 +84,13 @@ app.get("/api/bootstrap", auth, (req, res) => {
 
   const events = db.prepare(`SELECT * FROM events`).all().map((e) => {
     const extra = JSON.parse(e.extra || "{}");
+    const bk = db.prepare("SELECT * FROM bookings WHERE event_id=?").get(e.id);
     return {
       id: e.id, title: e.title, societyId: e.society_id, venue: e.venue, date: e.date, when: e.when,
       status: e.status, capacity: e.capacity, note: e.note,
       attendeeIds: db.prepare("SELECT user_id FROM event_attendees WHERE event_id=?").all(e.id).map((r) => r.user_id),
+      paid: db.prepare("SELECT user_id FROM payments WHERE event_id=? AND paid=1").all(e.id).map((r) => r.user_id),
+      booking: bk ? { status: bk.status, ref: bk.ref, teeWindow: bk.tee_window, players: bk.players, rate: bk.rate } : { status: "planning" },
       teams: extra.teams, sessions: extra.sessions, formats: extra.formats,
     };
   });
@@ -157,6 +160,23 @@ app.post("/api/post", ...mut((req) => {
 app.post("/api/chat", ...mut((req) => {
   const { eventId, text } = req.body;
   db.prepare("INSERT INTO chats (id,event_id,user_id,text,created_at) VALUES (?,?,?,?,?)").run(id("m"), eventId, req.userId, text, Date.now());
+}));
+
+app.post("/api/pay", ...mut((req) => {
+  const { eventId } = req.body, who = req.body.userId || req.userId; // organiser may pass userId
+  const cur = db.prepare("SELECT paid FROM payments WHERE event_id=? AND user_id=?").get(eventId, who);
+  if (cur && cur.paid) db.prepare("DELETE FROM payments WHERE event_id=? AND user_id=?").run(eventId, who);
+  else db.prepare("INSERT INTO payments (event_id,user_id,paid) VALUES (?,?,1) ON CONFLICT(event_id,user_id) DO UPDATE SET paid=1").run(eventId, who);
+}));
+
+app.post("/api/booking", ...mut((req) => {
+  const { eventId, status, ref, teeWindow, players, rate } = req.body;
+  db.prepare(`INSERT INTO bookings (event_id,status,ref,tee_window,players,rate,updated_at) VALUES (?,?,?,?,?,?,?)
+    ON CONFLICT(event_id) DO UPDATE SET status=excluded.status,
+      ref=COALESCE(excluded.ref, bookings.ref), tee_window=COALESCE(excluded.tee_window, bookings.tee_window),
+      players=COALESCE(excluded.players, bookings.players), rate=COALESCE(excluded.rate, bookings.rate),
+      updated_at=excluded.updated_at`)
+    .run(eventId, status || "planning", ref || null, teeWindow || null, players || null, rate || null, Date.now());
 }));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));

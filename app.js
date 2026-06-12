@@ -458,7 +458,7 @@
 
   // ---- organiser / payments / chat ----
   const organiserOf = (e) => (society(e.societyId).members[0] === ME) || (ui.events || []).some((x) => x.id === e.id);
-  const perHead = (e) => e.perHead || (courseForEvent(e) ? courseForEvent(e).booking.rate : 50);
+  const perHead = (e) => e.perHead || (e.booking && e.booking.rate) || (courseForEvent(e) ? courseForEvent(e).booking.rate : 50);
   const paidSet = (e) => { const s = new Set(e.paid || []); const o = ui.payments[e.id] || {}; Object.entries(o).forEach(([pid, v]) => (v ? s.add(pid) : s.delete(pid))); return s; };
   const paidCount = (e) => attendeesOf(e).filter((id) => paidSet(e).has(id)).length;
   const collected = (e) => paidCount(e) * perHead(e);
@@ -1056,11 +1056,14 @@
       if (act === "confirm-booking") { confirmBooking(actEl.dataset.id); return; }
       if (act === "toggle-paid") {
         const eid = actEl.dataset.id, pid = actEl.dataset.pid;
+        if (ONLINE()) { syncMutate("/pay", { eventId: eid, userId: pid }); return; }
         (ui.payments[eid] = ui.payments[eid] || {})[pid] = !paidSet(event(eid)).has(pid);
         persist(); render(); return;
       }
       if (act === "pay-share") {
-        const eid = actEl.dataset.id; (ui.payments[eid] = ui.payments[eid] || {})[ME] = true;
+        const eid = actEl.dataset.id;
+        if (ONLINE()) { syncMutate("/pay", { eventId: eid }); toast("Paid — cheers! Your share is in."); return; }
+        (ui.payments[eid] = ui.payments[eid] || {})[ME] = true;
         persist(); render(); toast("Paid — cheers! Your share is in."); return;
       }
       if (act === "remind-pay") { toast("Reminder sent to everyone who hasn't paid yet."); return; }
@@ -1175,6 +1178,13 @@
   function sendEnquiry() {
     const eid = enquiryEid; if (!eid) return;
     const players = Math.max(2, parseInt((document.querySelector("#enqPlayers") || {}).value, 10) || goingCount(event(eid)));
+    if (ONLINE()) {
+      closeModal();
+      RyderAPI.mutate("/booking", { eventId: eid, status: "provisional", players })
+        .then(loadFromServer).then(() => { nav("event", eid); toast("Enquiry sent — date held."); })
+        .catch((e) => toast(e.message || "Couldn't send enquiry"));
+      return;
+    }
     ui.bookings[eid] = Object.assign({}, ui.bookings[eid], { status: "provisional", players });
     persist(); closeModal(); nav("event", eid);
     const c = courseForEvent(event(eid));
@@ -1184,6 +1194,12 @@
     const e = event(eid), c = courseForEvent(e);
     const players = (ui.bookings[eid] && ui.bookings[eid].players) || goingCount(e);
     const ref = "RYD-" + Math.floor(1000 + Math.random() * 9000);
+    if (ONLINE()) {
+      RyderAPI.mutate("/booking", { eventId: eid, status: "confirmed", players, ref, teeWindow: "08:00–08:40 & 13:00–13:50" })
+        .then(loadFromServer).then(() => { render(); toast("Booking confirmed — time to build the teams!"); })
+        .catch((er) => toast(er.message || "Couldn't confirm booking"));
+      return;
+    }
     ui.bookings[eid] = Object.assign({}, ui.bookings[eid], { status: "confirmed", players, ref, teeWindow: "08:00–08:40 & 13:00–13:50" });
     persist();
     // shout about it in the feed
@@ -1333,7 +1349,9 @@
     ui.chats = b.chats || {};
     ui.comments = {};
     ui.posts = [];
-    applyLocalOverlays(); // local-only: created days, booking/payment overlays, locked sheets
+    ui.payments = {}; // payments + bookings are server-backed online
+    ui.bookings = {};
+    applyLocalOverlays(); // local-only: created days, locked match sheets
   }
   function syncMutate(path, body) {
     RyderAPI.mutate(path, body).then(loadFromServer).then(render)
