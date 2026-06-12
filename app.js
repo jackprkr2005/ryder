@@ -11,7 +11,7 @@
 
   // UI state that the user can change (persisted)
   const ui = Object.assign(
-    { joined: [], going: [], react: {}, follows: [], posts: [], events: [], comments: {}, sheets: {}, bookings: {} },
+    { joined: [], going: [], react: {}, follows: [], posts: [], events: [], comments: {}, sheets: {}, bookings: {}, payments: {}, chats: {} },
     (() => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } })()
   );
   ui.joined = new Set(ui.joined);
@@ -20,10 +20,13 @@
   ui.comments = ui.comments || {};
   ui.sheets = ui.sheets || {};
   ui.bookings = ui.bookings || {};
+  ui.payments = ui.payments || {};
+  ui.chats = ui.chats || {};
   const persist = () =>
     localStorage.setItem(STORE, JSON.stringify({
       joined: [...ui.joined], going: [...ui.going], react: ui.react,
-      follows: [...ui.follows], posts: ui.posts, events: ui.events, comments: ui.comments, sheets: ui.sheets, bookings: ui.bookings,
+      follows: [...ui.follows], posts: ui.posts, events: ui.events, comments: ui.comments,
+      sheets: ui.sheets, bookings: ui.bookings, payments: ui.payments, chats: ui.chats,
     }));
 
   // merge any user-created content back into the working data set
@@ -449,6 +452,23 @@
   const gbp = (n) => "£" + Math.round(n).toLocaleString("en-GB");
   const bkDone = (st) => ({ planning: 0, enquiry: 1, provisional: 2, confirmed: 3 }[st] || 0);
   const BK_STEPS = ["Enquiry sent", "Date held & quoted", "Confirmed & booked"];
+
+  // ---- organiser / payments / chat ----
+  const organiserOf = (e) => (society(e.societyId).members[0] === ME) || (ui.events || []).some((x) => x.id === e.id);
+  const perHead = (e) => e.perHead || (courseForEvent(e) ? courseForEvent(e).booking.rate : 50);
+  const paidSet = (e) => { const s = new Set(e.paid || []); const o = ui.payments[e.id] || {}; Object.entries(o).forEach(([pid, v]) => (v ? s.add(pid) : s.delete(pid))); return s; };
+  const paidCount = (e) => attendeesOf(e).filter((id) => paidSet(e).has(id)).length;
+  const collected = (e) => paidCount(e) * perHead(e);
+  const potTotal = (e) => attendeesOf(e).length * perHead(e);
+  const iPaid = (e) => paidSet(e).has(ME);
+  const chatOf = (e) => [...(e.chat || []), ...(ui.chats[e.id] || [])];
+  function nextAction(e) {
+    const bk = bookingOf(e).status;
+    if (bk !== "confirmed") return { label: "Book the course", act: "open" };
+    if (paidCount(e) < attendeesOf(e).length) return { label: "Chase payments", act: "open" };
+    if (!e.sessions) return { label: "Build the teams", act: "build-sheet" };
+    return { label: "View scoreboard", act: "open" };
+  }
   function bookingMailto(e, c) {
     const subj = `Society booking enquiry — ${e.title}`;
     const body = `Hi ${c ? c.booking.contact : "there"},\n\nWe'd like to book a society day for ${goingCount(e)} players at ${e.venue} on ${e.date}.\nFormat: a morning round then afternoon singles (Ryder Cup style).\n\nCould you let us know availability, the society rate, and what you need to hold and confirm the date?\n\nMany thanks,\n${me().name}\n${society(e.societyId).name}`;
@@ -503,6 +523,41 @@
     </div>`;
   }
 
+  function paymentsPanel(e) {
+    const ph = perHead(e); if (!ph) return "";
+    const att = attendeesOf(e), ps = paidSet(e);
+    const pc = att.filter((id) => ps.has(id)).length;
+    const col = pc * ph, tot = att.length * ph, pct = tot ? Math.round((col / tot) * 100) : 0;
+    const org = organiserOf(e);
+    const mine = isGoing(e.id) ? (iPaid(e)
+      ? `<div class="pay-mine done"><span class="bk-tick sm">✓</span> You've paid your ${gbp(ph)} share.</div>`
+      : `<div class="pay-mine"><span>Your share is <b>${gbp(ph)}</b> — covers golf${perHead(e) === (courseForEvent(e) || {}).booking?.rate ? " &amp; meal" : ""}.</span><button class="btn primary sm" data-act="pay-share" data-id="${e.id}">Pay ${gbp(ph)} now</button></div>`) : "";
+    const rows = org ? `<div class="pay-list">${att.map((id) => {
+      const paid = ps.has(id);
+      return `<div class="pay-row"><span class="pay-name">${av(id, 26)} ${golfer(id).name}${id === ME ? " (you)" : ""}</span>
+        <button class="pay-pill ${paid ? "paid" : "owes"}" data-act="toggle-paid" data-id="${e.id}" data-pid="${id}">${paid ? "✓ Paid" : "Mark paid"}</button></div>`;
+    }).join("")}</div>` : "";
+    return `<div class="card payments">
+      <div class="pay-head"><div><div class="bk-eyebrow">The pot</div><div class="pay-sum">${gbp(col)} <span>of ${gbp(tot)} collected</span></div></div>
+        <div class="pay-ph">${gbp(ph)}<span>per head</span></div></div>
+      <div class="pay-track"><span style="width:${pct}%"></span></div>
+      <div class="muted pay-meta">${pc} of ${att.length} paid${org && pc < att.length ? ` · <span class="link" data-act="remind-pay" data-id="${e.id}">remind the ${att.length - pc} who haven't</span>` : ""}</div>
+      ${mine}${rows}
+    </div>`;
+  }
+
+  function chatSection(e) {
+    const msgs = chatOf(e);
+    return `<p class="section-title">Day chat</p>
+      <div class="card chat">
+        <div class="chat-list">${msgs.length
+          ? msgs.map((m) => `<div class="chat-msg ${m.by === ME ? "mine" : ""}">${av(m.by, 30)}<div class="chat-bub"><div class="chat-meta"><b>${golfer(m.by).name}</b> <span class="muted">${m.time}</span></div>${m.text}</div></div>`).join("")
+          : '<div class="muted pad">No messages yet — say hello 👋</div>'}</div>
+        <div class="chat-add"><span class="uavatar" style="width:30px;height:30px;font-size:11px;background:${grad(me().colour)}">${initials(me().name)}</span>
+          <input placeholder="Message the group…" data-chat="${e.id}" /></div>
+      </div>`;
+  }
+
   function viewEvent() {
     const e = event(route.id);
     const s = society(e.societyId);
@@ -535,6 +590,7 @@
         </div>
 
         ${bookingPanel(e)}
+        ${bookingOf(e).status !== "planning" ? paymentsPanel(e) : ""}
 
         <div class="card captain-cta">
           <div>
@@ -550,6 +606,8 @@
         <div class="people-grid">${attendeesOf(e).map((id) => `<div class="person card" data-nav="profile" data-id="${id}">
           ${av(id, 46)}<div class="person-name">${golfer(id).name}</div><div class="person-meta">hcp ${golfer(id).hcp}</div></div>`).join("")}
         </div>
+
+        ${chatSection(e)}
       </div>`;
     }
 
@@ -589,20 +647,55 @@
       </div>
       <p class="muted pad-x">Tap any result to update it on the day — the scoreboard recalculates instantly.</p>
       ${sessions}
+      ${chatSection(e)}
     </div>`;
   }
 
   // ===================================================================
   //  MY DAYS
   // ===================================================================
+  function orgCard(e) {
+    const bk = bookingOf(e), att = attendeesOf(e);
+    const col = collected(e), tot = potTotal(e), pct = tot ? Math.round((col / tot) * 100) : 0;
+    const na = nextAction(e);
+    const naAttr = na.act === "build-sheet" ? `data-act="build-sheet" data-id="${e.id}"` : `data-nav="event" data-id="${e.id}"`;
+    const tag = e.sessions ? "Live" : { planning: "Not booked", enquiry: "Enquiry sent", provisional: "Provisional", confirmed: "Confirmed" }[bk.status];
+    const tagCls = e.sessions ? "confirmed" : bk.status;
+    return `<div class="card org-card">
+      <div class="org-top">
+        <div><div class="org-title" data-nav="event" data-id="${e.id}">${e.title}</div>
+          <div class="org-meta">${e.date} · ${e.venue}</div></div>
+        <span class="bk-status ${tagCls}">${tag}</span>
+      </div>
+      <div class="org-stats">
+        <div><span>Players</span><b>${att.length}/${e.capacity}</b></div>
+        <div><span>Paid</span><b>${paidCount(e)}/${att.length}</b></div>
+        <div><span>Collected</span><b>${gbp(col)}<i> / ${gbp(tot)}</i></b></div>
+      </div>
+      <div class="org-pay-track"><span style="width:${pct}%"></span></div>
+      <div class="org-foot">${avatarStack(att, 7, 26)}<button class="btn primary sm" ${naAttr}>${na.label} →</button></div>
+    </div>`;
+  }
   function viewEvents() {
-    const mine = data.events.filter((e) => isGoing(e.id));
-    const live = mine.filter((e) => e.status === "live");
-    const up = mine.filter((e) => e.status === "upcoming" || e.status === "open");
+    const running = data.events.filter((e) => organiserOf(e));
+    const playing = data.events.filter((e) => isGoing(e.id) && !organiserOf(e));
+    const open = data.events.filter((e) => e.status === "open" && !isGoing(e.id) && !organiserOf(e));
+    const toConfirm = running.filter((e) => bookingOf(e).status !== "confirmed").length;
+    const owed = running.reduce((n, e) => n + (potTotal(e) - collected(e)), 0);
+    const totalCollected = running.reduce((n, e) => n + collected(e), 0);
     return `<div class="view">
-      ${live.length ? `<p class="section-title">Live now</p><div class="match-list">${live.map((e) => eventMini(e.id)).join("")}</div>` : ""}
-      <p class="section-title">Your upcoming days</p>
-      <div class="match-list">${up.length ? up.map((e) => eventMini(e.id)).join("") : '<p class="muted pad">Nothing booked — head to Discover to find a day out.</p>'}</div>
+      <div class="dash-head"><h2>Your days</h2>
+        <button class="btn primary sm" data-act="new-day">＋ New day</button></div>
+      <div class="statgrid">
+        <div class="card stat"><div class="k">Days running</div><div class="v">${running.length}</div></div>
+        <div class="card stat"><div class="k">To confirm</div><div class="v">${toConfirm}</div></div>
+        <div class="card stat"><div class="k">Collected</div><div class="v">${gbp(totalCollected)}</div></div>
+        <div class="card stat"><div class="k">Outstanding</div><div class="v">${gbp(owed)}</div></div>
+      </div>
+      <p class="section-title">Days you're running</p>
+      <div class="org-grid">${running.length ? running.map(orgCard).join("") : '<p class="muted pad">You\'re not running any days yet — start one from “New day”.</p>'}</div>
+      ${playing.length ? `<p class="section-title">Days you're playing</p><div class="match-list">${playing.map((e) => eventMini(e.id)).join("")}</div>` : ""}
+      ${open.length ? `<p class="section-title">Open days to join</p><div class="match-list">${open.map((e) => eventMini(e.id)).join("")}</div>` : ""}
     </div>`;
   }
 
@@ -950,6 +1043,17 @@
       if (act === "enquire") { openModal("enquiry", { eventId: actEl.dataset.id }); return; }
       if (act === "send-enquiry") { sendEnquiry(); return; }
       if (act === "confirm-booking") { confirmBooking(actEl.dataset.id); return; }
+      if (act === "toggle-paid") {
+        const eid = actEl.dataset.id, pid = actEl.dataset.pid;
+        (ui.payments[eid] = ui.payments[eid] || {})[pid] = !paidSet(event(eid)).has(pid);
+        persist(); render(); return;
+      }
+      if (act === "pay-share") {
+        const eid = actEl.dataset.id; (ui.payments[eid] = ui.payments[eid] || {})[ME] = true;
+        persist(); render(); toast("Paid — cheers! Your share is in."); return;
+      }
+      if (act === "remind-pay") { toast("Reminder sent to everyone who hasn't paid yet."); return; }
+      if (act === "new-day") { openModal("newday"); return; }
       if (act === "compose") { openModal("compose"); return; }
       if (act === "modal-close" || act === "modal-cancel") { closeModal(); return; }
       if (act === "create-day") { createDay(); return; }
@@ -969,13 +1073,19 @@
 
   // submit a comment with Enter
   document.addEventListener("keydown", (ev) => {
-    const input = ev.target.closest("[data-comment]");
-    if (input && ev.key === "Enter") {
+    const cin = ev.target.closest("[data-comment]");
+    if (cin && ev.key === "Enter") {
       ev.preventDefault();
-      const text = input.value.trim();
-      if (!text) return;
-      const pid = input.dataset.comment;
-      (ui.comments[pid] = ui.comments[pid] || []).push({ by: ME, text, time: now() });
+      const text = cin.value.trim(); if (!text) return;
+      (ui.comments[cin.dataset.comment] = ui.comments[cin.dataset.comment] || []).push({ by: ME, text, time: now() });
+      persist(); render();
+    }
+    const chat = ev.target.closest("[data-chat]");
+    if (chat && ev.key === "Enter") {
+      ev.preventDefault();
+      const text = chat.value.trim(); if (!text) return;
+      const eid = chat.dataset.chat;
+      (ui.chats[eid] = ui.chats[eid] || []).push({ by: ME, text, time: now() });
       persist(); render();
     }
   });

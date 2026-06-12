@@ -96,6 +96,11 @@ window.RYDER_SEED = {
       attendees: ["p1","p2","p3","p4","p5","p6","p7","p8","p9","p10","p11","p12"],
       courseId: "c1",
       booking: { status: "confirmed", ref: "RYD-7741", teeWindow: "08:00–08:40 & 13:00–13:50", players: 12 },
+      paid: ["p1","p2","p3","p4","p5","p6","p7","p8","p9","p10","p11","p12"],
+      chat: [
+        { by: "p7", text: "Range open from 7am if anyone fancies a warm-up.", time: "2h" },
+        { by: "p3", text: "First tee coffee on me ☕", time: "1h" },
+      ],
       teams: {
         blue: { id: "blue", name: "Team Azure",   colour: "blue", captain: "Jack Parker" },
         red:  { id: "red",  name: "Team Crimson", colour: "red",  captain: "Danny Hughes" },
@@ -137,6 +142,11 @@ window.RYDER_SEED = {
       formats: ["Foursomes", "Singles"],
       courseId: "c2",
       booking: { status: "provisional" },
+      paid: ["p1","p2","p7","p10"],
+      chat: [
+        { by: "p15", text: "Can't wait for this one — RND is a brute in the wind!", time: "1d" },
+        { by: "p10", text: "Who needs a lift from Barnstaple?", time: "20h" },
+      ],
       note: "One big day — morning foursomes, afternoon singles. £55 a head covers golf, dinner and the cup engraving.",
     },
     {
@@ -152,6 +162,7 @@ window.RYDER_SEED = {
       formats: ["Fourballs", "Singles"],
       courseId: "c4",
       booking: { status: "confirmed", ref: "TC-2231", teeWindow: "09:00–09:40 & 13:30–14:10", players: 12 },
+      paid: ["p7","p10"],
       note: "Looking for 8 more players to make up the teams — all welcome, come and meet the crew.",
     },
   ],
