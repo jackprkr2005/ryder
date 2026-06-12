@@ -77,6 +77,18 @@ python3 -m http.server 8000
 | `app.js` | State, client-side router, views and interactions |
 | `data.js` | Sample golfers, societies, events and feed |
 
+## Multiplayer backend (`/server`)
+
+A real backend now lives in [`server/`](server/) — **Express + `node:sqlite` +
+WebSockets** with accounts, shared data and live updates. Run it with
+`cd server && npm install && npm start` (Node 22+), then sign in with a seed
+account (handle `jackp` / password `golf`). It's verified end-to-end: two
+accounts share state and a change by one is broadcast live to the other.
+
+The static front-end still runs stand-alone on `localStorage` (so it can be
+hosted on GitHub Pages). Wiring it to this API + `/ws` — with a graceful local
+fallback — is the next step to make bookings, payments and chat genuinely shared.
+
 ## Where it goes next
 
 - A backend so it's genuinely multiplayer — shared events, a real-time
