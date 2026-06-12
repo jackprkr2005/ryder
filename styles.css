@@ -670,3 +670,13 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
   .org-grid { grid-template-columns: 1fr; }
   .chat-bub { max-width: 84%; }
 }
+
+/* iOS standalone / notch safe areas */
+@supports (padding: max(0px)) {
+  .topbar { padding-top: max(15px, env(safe-area-inset-top)); }
+  #app {
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-bottom: max(56px, env(safe-area-inset-bottom));
+  }
+}
