@@ -23,12 +23,15 @@
   ui.bookings = ui.bookings || {};
   ui.payments = ui.payments || {};
   ui.chats = ui.chats || {};
-  const persist = () =>
-    localStorage.setItem(STORE, JSON.stringify({
-      joined: [...ui.joined], going: [...ui.going], react: ui.react,
-      follows: [...ui.follows], posts: ui.posts, events: ui.events, comments: ui.comments,
-      sheets: ui.sheets, bookings: ui.bookings, payments: ui.payments, chats: ui.chats,
-    }));
+  const persist = () => {
+    try {
+      localStorage.setItem(STORE, JSON.stringify({
+        joined: [...ui.joined], going: [...ui.going], react: ui.react,
+        follows: [...ui.follows], posts: ui.posts, events: ui.events, comments: ui.comments,
+        sheets: ui.sheets, bookings: ui.bookings, payments: ui.payments, chats: ui.chats,
+      }));
+    } catch { /* storage unavailable (e.g. sandboxed iframe) — run in memory */ }
+  };
 
   // merge any user-created content back into the working data set
   function applyLocalOverlays() {
