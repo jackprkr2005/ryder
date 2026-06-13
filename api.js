@@ -19,9 +19,16 @@ window.RyderAPI = (function () {
   const setToken = (t) => { token = t; localStorage.setItem(TOKEN_KEY, t); };
 
   async function detect() {
+    // Only treat the backend as present if /api/health returns real JSON
+    // ({ok:true}). Static hosts (GitHub Pages, Base44) often return 200 +
+    // index.html for unknown paths, which must NOT count as a backend —
+    // otherwise the app would show a login gate with nothing behind it.
     try {
       const r = await fetch(base + "/api/health", { cache: "no-store" });
-      online = r.ok;
+      if (!r.ok) { online = false; return online; }
+      if (!(r.headers.get("content-type") || "").includes("application/json")) { online = false; return online; }
+      const d = await r.json().catch(() => null);
+      online = !!(d && d.ok === true);
     } catch { online = false; }
     return online;
   }
