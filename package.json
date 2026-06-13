@@ -1,5 +1,21 @@
 {
+  "name": "ryder-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ryder — native iOS wrapper (Capacitor) for the web app",
+  "scripts": {
+    "build:web": "node scripts/build-web.mjs",
+    "ios:add": "npm run build:web && npx cap add ios",
+    "ios:sync": "npm run build:web && npx cap sync ios",
+    "ios:icons": "npx @capacitor/assets generate --ios --assetPath resources",
+    "ios:open": "npx cap open ios"
+  },
   "dependencies": {
-    "playwright-core": "^1.60.0"
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/ios": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.1.2"
   }
 }

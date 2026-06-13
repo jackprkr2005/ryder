@@ -77,6 +77,14 @@ python3 -m http.server 8000
 | `app.js` | State, client-side router, views and interactions |
 | `data.js` | Sample golfers, societies, events and feed |
 
+## Native iOS app
+
+The web app is packaged for the **App Store** with Capacitor — see
+[`IOS.md`](IOS.md) for the full walkthrough. In short: `npm install` →
+`npm run ios:add` → `npm run ios:icons` → `npm run ios:open`, then Archive and
+submit from Xcode (needs a Mac + an Apple Developer account). App icons live in
+`resources/`.
+
 ## Multiplayer backend (`/server`)
 
 A real backend now lives in [`server/`](server/) — **Express + `node:sqlite` +

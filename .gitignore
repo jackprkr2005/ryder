@@ -2,3 +2,5 @@ node_modules/
 .DS_Store
 *.log
 server/ryder.db*
+www/
+package-lock.json
