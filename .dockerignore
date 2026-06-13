@@ -1,6 +1,0 @@
-.git
-node_modules
-server/node_modules
-server/ryder.db*
-*.log
-.DS_Store
