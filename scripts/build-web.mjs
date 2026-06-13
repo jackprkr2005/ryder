@@ -6,7 +6,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const out = resolve(root, "www");
+const out = resolve(root, process.argv[2] || "www");
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
@@ -15,4 +15,4 @@ const files = ["index.html", "app.js", "api.js", "data.js", "styles.css", "manif
 for (const f of files) cpSync(resolve(root, f), resolve(out, f));
 cpSync(resolve(root, "assets"), resolve(out, "assets"), { recursive: true });
 
-console.log("Built www/ for Capacitor (" + (files.length + 1) + " entries).");
+console.log("Built " + (process.argv[2] || "www") + "/ (" + (files.length + 1) + " entries).");

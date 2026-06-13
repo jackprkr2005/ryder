@@ -4,3 +4,4 @@ node_modules/
 server/ryder.db*
 www/
 package-lock.json
+dist/

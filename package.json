@@ -2,8 +2,11 @@
   "name": "ryder-app",
   "version": "1.0.0",
   "private": true,
-  "description": "Ryder — native iOS wrapper (Capacitor) for the web app",
+  "description": "Ryder — golf societies web app (+ native iOS wrapper)",
   "scripts": {
+    "dev": "vite",
+    "build": "node scripts/build-web.mjs dist",
+    "preview": "vite preview --outDir dist",
     "build:web": "node scripts/build-web.mjs",
     "ios:add": "npm run build:web && npx cap add ios",
     "ios:sync": "npm run build:web && npx cap sync ios",
@@ -16,6 +19,7 @@
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^6.1.2"
+    "@capacitor/cli": "^6.1.2",
+    "vite": "^5.4.10"
   }
 }
