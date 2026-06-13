@@ -419,20 +419,33 @@
   function pairCell(ids, colour, side, win) {
     return `<div class="pair ${side} ${win ? "win" : ""}">${ids.map((id) => playerRowTeam(id, colour)).join("")}</div>`;
   }
-  function midCell(m, idx) {
+  function midCell(m, idx, T) {
     let inner;
     if (m.status === "final") {
       const cls = m.winner === "blue" ? "blue" : m.winner === "red" ? "red" : "halved";
       inner = `<span class="badge final">Final</span><span class="res ${cls}">${m.margin}</span>`;
     } else if (m.status === "live") {
-      inner = `<span class="badge live">Live</span><span class="res halved">${m.state || ""}</span><span class="thru">thru ${m.thru}</span>`;
+      // colour the margin by the leading side and drop the redundant team name
+      // (state reads e.g. "Azure 2 up"; team is "Team Azure" — match either form)
+      const st = m.state || "";
+      const lead = (name) => {
+        for (const v of [name, (name || "").replace(/^team\s+/i, "")]) {
+          if (v && st.toLowerCase().indexOf(v.toLowerCase()) === 0) return st.slice(v.length).trim();
+        }
+        return null;
+      };
+      let cls = "halved", label = st;
+      const lb = T && lead(T.blue.name), lr = T && lead(T.red.name);
+      if (lb != null) { cls = "blue"; label = lb; }
+      else if (lr != null) { cls = "red"; label = lr; }
+      inner = `<span class="badge live">Live</span><span class="res ${cls}">${label || "In play"}</span><span class="thru">thru ${m.thru}</span>`;
     } else {
       inner = `<span class="badge soon">Tee</span><span class="thru">${m.tee || "TBC"}</span>`;
     }
     return `<div class="mid" data-act="cycle" data-mi="${idx}" title="Click to set the result">${inner}</div>`;
   }
-  function matchCard(m, idx) {
-    return `<div class="match">${pairCell(m.blue, "blue", "left", m.winner === "blue")}${midCell(m, idx)}${pairCell(m.red, "red", "right", m.winner === "red")}</div>`;
+  function matchCard(m, idx, T) {
+    return `<div class="match">${pairCell(m.blue, "blue", "left", m.winner === "blue")}${midCell(m, idx, T)}${pairCell(m.red, "red", "right", m.winner === "red")}</div>`;
   }
   function pointsFor(ev, team) {
     let p = 0;
@@ -626,7 +639,7 @@
     let idx = -1;
     const sessions = e.sessions.map((sn) => {
       const sp = sessionPoints(sn);
-      const cards = sn.matches.map((m) => { idx++; return matchCard(m, idx); }).join("");
+      const cards = sn.matches.map((m) => { idx++; return matchCard(m, idx, T); }).join("");
       return `<section class="session">
         <div class="session-head"><h3>${sn.name}</h3><span class="fmt">${sn.format}</span>
           <span class="pts"><span class="b">${fmtPts(sp.b)}</span> – <span class="r">${fmtPts(sp.r)}</span></span></div>
