@@ -673,6 +673,72 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
   .chat-bub { max-width: 84%; }
 }
 
+/* ============================================================
+   PHONES — compact header + scaled-down layout
+   (placed after the other breakpoints so it wins on narrow widths)
+   ============================================================ */
+@media (max-width: 560px) {
+  #app { padding: 0 13px 40px; }
+
+  /* Header: brand left, actions right on one row, tabs as a full-width
+     strip beneath. brand flexes so the avatar never wraps to its own line. */
+  .topbar {
+    gap: 10px; flex-wrap: wrap; align-items: center;
+    padding: 12px 2px 11px; margin-bottom: 16px;
+  }
+  .brand { flex: 1 1 auto; min-width: 0; }
+  .brand-mark { width: 36px; height: 36px; border-radius: 11px; }
+  .brand-text strong { font-size: 20px; }
+  .new-day { padding: 9px 13px; font-size: 13px; }
+  .me-avatar { width: 34px; height: 34px; font-size: 12px; }
+
+  .topbar .tabs { order: 3; width: 100%; margin: 0; padding: 4px; }
+  .topbar .tab { flex: 1 1 0; min-width: 0; padding: 8px 6px; font-size: 13px; text-align: center; white-space: nowrap; }
+
+  /* Tighter cards so text gets the width back */
+  .feed-col { gap: 13px; }
+  .composer { padding: 12px 13px; gap: 10px; }
+  .composer-fake { font-size: 13.5px; padding: 10px 14px; }
+  .post { padding: 14px; }
+  .rail-card, .pad { padding: 14px; }
+  .section-title { margin: 20px 2px 10px; }
+
+  /* Scoreboard hero scales down */
+  .hero { padding: 20px 18px 22px; border-radius: 16px; }
+  .score-row { gap: 8px; margin-top: 18px; }
+  .team-score { font-size: 44px; }
+  .score-mid .target b { font-size: 17px; }
+  .statgrid { gap: 10px; margin-top: 14px; }
+  .stat { padding: 13px 14px; }
+  .stat .v { font-size: 22px; }
+
+  /* Match + draft rows a touch tighter */
+  .match, .dmatch { grid-template-columns: 1fr 82px 1fr; }
+  .match .pair, .dm-side { padding: 12px; }
+
+  /* Feed scoreline post */
+  .scoreline { padding: 16px 14px; gap: 8px; }
+  .sl-score { font-size: 30px; }
+  .photo { height: 200px; }
+
+  /* Big section headings shouldn't dominate a phone screen */
+  .dash-head h2, .disc-hero h2 { font-size: 22px; }
+  .draft-h { font-size: 24px; }
+  .disc-hero { padding: 20px 18px; }
+
+  .people-grid { grid-template-columns: repeat(2, 1fr); }
+  .appfoot { flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; }
+}
+
+@media (max-width: 430px) {
+  /* Drop the brand tagline so the header row always fits cleanly */
+  .brand-text span { display: none; }
+  .brand-text strong { font-size: 19px; }
+  .topbar .tab { font-size: 12.5px; padding: 8px 4px; letter-spacing: -.01em; }
+  .team-score { font-size: 40px; }
+  .people-grid { grid-template-columns: 1fr; }
+}
+
 /* iOS standalone / notch safe areas */
 @supports (padding: max(0px)) {
   .topbar { padding-top: max(15px, env(safe-area-inset-top)); }
