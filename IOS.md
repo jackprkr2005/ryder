@@ -46,6 +46,7 @@ npm install
 ## Step 3 — create the iOS project
 
 ```bash
+npm run ios:setup   # one-time: installs Capacitor (kept out of the web build)
 npm run ios:add      # builds www/ and adds the native iOS project
 npm run ios:icons    # generates the app icon + splash from resources/icon.png
 ```
