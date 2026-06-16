@@ -208,7 +208,7 @@
       <div class="feed-col">
         <div class="composer card">
           <span class="uavatar" style="width:40px;height:40px;background:${grad(me().colour)}">${initials(me().name)}</span>
-          <button class="composer-fake" data-act="compose">Share a result, post a photo, or start a day out…</button>
+          <button class="composer-fake" data-act="compose"><span class="cf-full">Share a result, post a photo, or start a day out…</span><span class="cf-short">Share a result or photo…</span></button>
           <button class="btn primary sm" data-act="compose">Post</button>
         </div>
         ${feed}
