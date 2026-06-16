@@ -255,8 +255,9 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
 .feed-wrap { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 20px; align-items: start; }
 .feed-col { display: flex; flex-direction: column; gap: 16px; }
 .composer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
-.composer-fake { flex: 1; text-align: left; border: 1px solid var(--line); background: #faf6ec; color: var(--ink-soft); font: inherit; font-size: 14px; padding: 11px 16px; border-radius: 999px; cursor: pointer; }
+.composer-fake { flex: 1; min-width: 0; text-align: left; border: 1px solid var(--line); background: #faf6ec; color: var(--ink-soft); font: inherit; font-size: 14px; padding: 11px 16px; border-radius: 999px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .composer-fake:hover { background: #f5efe0; }
+.composer-fake .cf-short { display: none; }
 
 /* --- post card --- */
 .post { padding: 16px 18px; }
@@ -725,6 +726,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
   .feed-col { gap: 13px; }
   .composer { padding: 12px 13px; gap: 10px; }
   .composer-fake { font-size: 13.5px; padding: 10px 14px; }
+  .composer-fake .cf-full { display: none; }
+  .composer-fake .cf-short { display: inline; }
   .post { padding: 14px; }
   .rail-card, .pad { padding: 14px; }
   .section-title { margin: 20px 2px 10px; }
