@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Ryder mark">
+  <path d="M256 110 H394 L256 200 Z" fill="#16432f"/>
+  <rect x="249.5" y="110" width="13" height="190" rx="6.5" fill="#16432f"/>
+  <circle cx="256" cy="350" r="58" fill="#16432f"/>
+</svg>

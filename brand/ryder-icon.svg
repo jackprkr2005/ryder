@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Ryder">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d5a3e"/>
+      <stop offset="0.55" stop-color="#143f2d"/>
+      <stop offset="1" stop-color="#0f2e22"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#g)"/>
+  <!-- flag -->
+  <path d="M256 110 H394 L256 200 Z" fill="#a9823a"/>
+  <!-- flagstick -->
+  <rect x="249.5" y="110" width="13" height="190" rx="6.5" fill="#a9823a"/>
+  <!-- ball / hole -->
+  <circle cx="256" cy="350" r="58" fill="#a9823a"/>
+</svg>
