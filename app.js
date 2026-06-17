@@ -23,18 +23,21 @@
   ui.bookings = ui.bookings || {};
   ui.payments = ui.payments || {};
   ui.chats = ui.chats || {};
+  ui.profile = ui.profile || null;
   const persist = () => {
     try {
       localStorage.setItem(STORE, JSON.stringify({
         joined: [...ui.joined], going: [...ui.going], react: ui.react,
         follows: [...ui.follows], posts: ui.posts, events: ui.events, comments: ui.comments,
         sheets: ui.sheets, bookings: ui.bookings, payments: ui.payments, chats: ui.chats,
+        profile: ui.profile,
       }));
     } catch { /* storage unavailable (e.g. sandboxed iframe) — run in memory */ }
   };
 
   // merge any user-created content back into the working data set
   function applyLocalOverlays() {
+    if (ui.profile) Object.assign(me(), ui.profile);
     (ui.events || []).forEach((e) => { if (!data.events.some((x) => x.id === e.id)) data.events.push(e); });
     data.feed = [...(ui.posts || []), ...data.feed];
     // re-apply any locked-in match sheets (captain's draft) onto their events
@@ -62,6 +65,7 @@
   };
   const grad  = (c) => { const p = COLOURS[c] || COLOURS.slate; return `linear-gradient(150deg,${p[0]},${p[1]})`; };
   const solid = (c) => (COLOURS[c] || COLOURS.slate)[1];
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const initials = (name) => name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   // society monogram: skip a leading "The", take first letters of next two words
   const mono = (name) => name.replace(/^the\s+/i, "").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
@@ -382,7 +386,7 @@
             </div>
           </div>
           ${isMe
-            ? `<button class="btn outline">Edit profile</button>`
+            ? `<button class="btn outline" data-act="edit-profile">Edit profile</button>`
             : `<div class="profile-actions">
                  <button class="btn ${isFollowing(g.id) ? "ghost" : "primary"}" data-act="follow" data-id="${g.id}">${isFollowing(g.id) ? "✓ Following" : "Follow"}</button>
                  <button class="btn outline" data-act="message" data-id="${g.id}">Message</button>
@@ -1085,6 +1089,13 @@
       if (act === "remind-pay") { toast("Reminder sent to everyone who hasn't paid yet."); return; }
       if (act === "new-day") { openModal("newday"); return; }
       if (act === "compose") { openModal("compose"); return; }
+      if (act === "edit-profile") { openModal("editprofile"); return; }
+      if (act === "pick-colour") {
+        epColour = actEl.dataset.colour;
+        overlay.querySelectorAll(".tint-row .tint").forEach((t) => t.classList.toggle("on", t.dataset.colour === epColour));
+        return;
+      }
+      if (act === "save-profile") { saveProfile(); return; }
       if (act === "modal-close" || act === "modal-cancel") { closeModal(); return; }
       if (act === "create-day") { createDay(); return; }
       if (act === "create-post") { createPost(); return; }
@@ -1165,6 +1176,7 @@
     enquiryEid = type === "enquiry" ? opts.eventId : null;
     overlay.innerHTML = type === "compose" ? composeModal()
       : type === "enquiry" ? enquiryModal(event(opts.eventId))
+      : type === "editprofile" ? editProfileModal()
       : newDayModal(opts.venue);
     overlay.hidden = false;
     const first = overlay.querySelector("input, textarea, select");
@@ -1191,6 +1203,54 @@
       </div>
     </div>`;
   }
+
+  let epColour = null;
+  function editProfileModal() {
+    const m = me();
+    epColour = m.colour;
+    const swatches = Object.keys(COLOURS).map((c) =>
+      `<button type="button" class="tint ${c === m.colour ? "on" : ""}" data-act="pick-colour" data-colour="${c}" title="${c}" style="background:${solid(c)}"></button>`).join("");
+    return `<div class="modal wide">
+      <div class="modal-head">
+        <div><h3 style="margin:0">Edit profile</h3><div class="muted" style="font-size:13px">Update how you show up across Ryder.</div></div>
+        <button class="icon-btn" data-act="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="form-grid">
+        <label class="fld span2"><span>Name</span><input id="epName" type="text" value="${esc(m.name)}" placeholder="Your name" /></label>
+        <label class="fld"><span>Home club</span><input id="epClub" type="text" value="${esc(m.club || "")}" placeholder="e.g. Saunton GC" /></label>
+        <label class="fld"><span>Location</span><input id="epLoc" type="text" value="${esc(m.loc || "")}" placeholder="e.g. North Devon" /></label>
+        <label class="fld"><span>Handicap</span><input id="epHcp" type="number" min="0" max="54" step="1" value="${m.hcp}" /></label>
+        <div class="fld span2"><span>Team colour</span><div class="tint-row">${swatches}</div></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" data-act="modal-cancel">Cancel</button>
+        <button class="btn primary" data-act="save-profile">Save changes</button>
+      </div>
+    </div>`;
+  }
+  function saveProfile() {
+    const name = (document.querySelector("#epName").value || "").trim();
+    if (!name) { toast("Your name can't be empty."); return; }
+    const hcpRaw = parseInt(document.querySelector("#epHcp").value, 10);
+    const patch = {
+      name,
+      club: (document.querySelector("#epClub").value || "").trim(),
+      loc: (document.querySelector("#epLoc").value || "").trim(),
+      hcp: Number.isFinite(hcpRaw) ? Math.max(0, Math.min(54, hcpRaw)) : me().hcp,
+      colour: epColour || me().colour,
+    };
+    if (ONLINE()) {
+      closeModal();
+      RyderAPI.mutate("/profile", patch)
+        .then(loadFromServer).then(() => { nav("profile"); toast("Profile updated."); })
+        .catch((e) => toast(e.message || "Couldn't save your profile"));
+      return;
+    }
+    Object.assign(me(), patch);
+    ui.profile = Object.assign({}, ui.profile, patch);
+    persist(); closeModal(); nav("profile"); toast("Profile updated.");
+  }
+
   function sendEnquiry() {
     const eid = enquiryEid; if (!eid) return;
     const players = Math.max(2, parseInt((document.querySelector("#enqPlayers") || {}).value, 10) || goingCount(event(eid)));
