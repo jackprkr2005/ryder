@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 160" width="560" height="160" role="img" aria-label="Ryder">
+  <defs>
+    <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d5a3e"/>
+      <stop offset="1" stop-color="#0f2e22"/>
+    </linearGradient>
+  </defs>
+  <!-- mark in a rounded green tile -->
+  <rect x="24" y="34" width="92" height="92" rx="26" fill="url(#g2)"/>
+  <g transform="translate(24,34) scale(0.1796875)">
+    <path d="M256 110 H394 L256 200 Z" fill="#a9823a"/>
+    <rect x="249.5" y="110" width="13" height="190" rx="6.5" fill="#a9823a"/>
+    <circle cx="256" cy="350" r="58" fill="#a9823a"/>
+  </g>
+  <!-- wordmark + tagline -->
+  <text x="140" y="86" font-family="Fraunces, Georgia, 'Times New Roman', serif" font-weight="600" font-size="58" letter-spacing="-0.5" fill="#16432f">Ryder</text>
+  <text x="142" y="116" font-family="Manrope, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-weight="700" font-size="16" letter-spacing="4.2" fill="#646d63">MEET · ORGANISE · PLAY</text>
+</svg>
