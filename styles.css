@@ -234,6 +234,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
 .btn.ghost { color: var(--ink-soft); background: #eee9dc; }
 .btn.sm { padding: 8px 14px; font-size: 13px; }
 .btn.xs { padding: 6px 12px; font-size: 12.5px; }
+.btn:disabled, .btn[disabled] { background: #e7e2d6; color: var(--ink-soft); border-color: transparent; box-shadow: none; cursor: not-allowed; opacity: .85; }
+.btn:disabled:hover, .btn[disabled]:hover { background: #e7e2d6; border-color: transparent; }
 
 /* --- avatars / stacks --- */
 .uavatar, .soc-avatar { border: 0; cursor: pointer; border-radius: 10px; color: #f6f0e2; font-weight: 800; font-family: var(--display); display: inline-grid; place-items: center; flex: none; line-height: 1; }
@@ -762,6 +764,20 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
   .disc-hero { padding: 20px 18px; }
 
   .people-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* Event / society / profile header: stack vertically so the title gets the
+     full width instead of being squeezed beside the avatar (and overlapping
+     the cover). */
+  .cover { height: 78px; }
+  .ph-row { flex-direction: column; align-items: stretch; gap: 10px; padding: 0 16px 16px; margin-top: -30px; }
+  .big-avatar { width: 62px; height: 62px; font-size: 23px; border-width: 3px; }
+  .ph-main { flex: none; padding-top: 0; }
+  .ph-main h2 { font-size: 20px; }
+  .ph-row > .btn { width: 100%; margin-top: 2px; }
+  .profile-actions { width: 100%; margin-top: 4px; }
+  .profile-actions .btn { flex: 1; }
+  .subtabs { padding: 0 12px 4px; }
+
   .appfoot { flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; }
 }
 

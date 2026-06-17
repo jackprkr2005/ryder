@@ -179,6 +179,15 @@ app.post("/api/booking", ...mut((req) => {
     .run(eventId, status || "planning", ref || null, teeWindow || null, players || null, rate || null, Date.now());
 }));
 
+app.post("/api/profile", ...mut((req) => {
+  const { name, club, loc, hcp, colour } = req.body || {};
+  const h = Number.parseInt(hcp, 10);
+  db.prepare(`UPDATE users SET
+      name = COALESCE(?, name), club = COALESCE(?, club), loc = COALESCE(?, loc),
+      hcp = COALESCE(?, hcp), colour = COALESCE(?, colour) WHERE id = ?`)
+    .run(name || null, club ?? null, loc ?? null, Number.isFinite(h) ? h : null, colour || null, req.userId);
+}));
+
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // ---- http + websocket --------------------------------------------
