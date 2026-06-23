@@ -66,6 +66,44 @@
   const grad  = (c) => { const p = COLOURS[c] || COLOURS.slate; return `linear-gradient(150deg,${p[0]},${p[1]})`; };
   const solid = (c) => (COLOURS[c] || COLOURS.slate)[1];
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  // ---- device location -------------------------------------------
+  // Native iOS/Android go through the Capacitor Geolocation plugin (WKWebView
+  // blocks the web Geolocation API); browsers use navigator.geolocation.
+  let userLoc = null, locating = false;
+  function getDeviceLocation() {
+    const cap = window.Capacitor;
+    if (cap && cap.Plugins && cap.Plugins.Geolocation) {
+      return cap.Plugins.Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 })
+        .then((p) => ({ lat: p.coords.latitude, lng: p.coords.longitude }))
+        .catch(() => null);
+    }
+    if (navigator.geolocation) {
+      return new Promise((res) => navigator.geolocation.getCurrentPosition(
+        (p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+        () => res(null),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      ));
+    }
+    return Promise.resolve(null);
+  }
+  function distMiles(a, b) {
+    const R = 3958.8, rad = (d) => (d * Math.PI) / 180;
+    const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+    const s = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+  }
+  const courseDist = (c) => (userLoc ? distMiles(userLoc, { lat: c.lat, lng: c.lng }) : null);
+  const fmtMiles = (m) => (m < 10 ? m.toFixed(1) : Math.round(m)) + " mi";
+  function locate() {
+    if (locating) return;
+    locating = true; toast("Finding your location…");
+    getDeviceLocation().then((loc) => {
+      locating = false;
+      if (loc) { userLoc = loc; if (route.view === "courses") render(); toast("Showing courses near you."); }
+      else toast("Couldn't get your location — check location permission.");
+    });
+  }
   const initials = (name) => name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   // society monogram: skip a leading "The", take first letters of next two words
   const mono = (name) => name.replace(/^the\s+/i, "").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
@@ -758,7 +796,7 @@
         <span class="cc-marker" style="background:${solid(c.colour)}">${mono(c.name)}</span>
         <div class="cc-id">
           <div class="cc-name">${c.name}</div>
-          <div class="cc-meta">${c.town} · ${c.holes} holes · par ${c.par} · est. ${c.est}</div>
+          <div class="cc-meta">${c.town} · ${c.holes} holes · par ${c.par} · est. ${c.est}${userLoc ? ` · <b>${fmtMiles(courseDist(c))} away</b>` : ""}</div>
         </div>
         <span class="cc-type">${c.type}</span>
       </div>
@@ -780,14 +818,16 @@
   }
 
   function viewCourses() {
-    const cards = data.courses.map((c) => courseCard(c)).join("");
+    const list = userLoc ? [...data.courses].sort((a, b) => courseDist(a) - courseDist(b)) : data.courses;
+    const cards = list.map((c) => courseCard(c)).join("");
     return `<div class="view">
       <div class="card disc-hero">
         <h2>Find a course to play</h2>
         <p>Browse the clubs near you, see who already plays where, and start a Ryder Cup day at any of them. Tap a marker to jump to a club.</p>
+        <button class="btn ${userLoc ? "outline" : "primary"} sm" data-act="locate" style="margin-top:14px">${userLoc ? "📍 Sorted by distance from you" : "📍 Use my location"}</button>
       </div>
       <div id="coursemap" class="coursemap card"></div>
-      <p class="section-title">Clubs near you · ${data.courses.length}</p>
+      <p class="section-title">${userLoc ? "Courses nearest you" : "Clubs near you"} · ${data.courses.length}</p>
       <div class="course-list">${cards}</div>
     </div>`;
   }
@@ -817,7 +857,9 @@
     el.innerHTML = "";
     const map = L.map(el, { scrollWheelZoom: false });
     leafletMap = map;
-    map.fitBounds(data.courses.map((c) => [c.lat, c.lng]), { padding: [38, 38] });
+    const bounds = data.courses.map((c) => [c.lat, c.lng]);
+    if (userLoc) bounds.push([userLoc.lat, userLoc.lng]);
+    map.fitBounds(bounds, { padding: [38, 38] });
     let loaded = 0;
     const tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 18, attribution: "&copy; OpenStreetMap",
@@ -831,6 +873,11 @@
       mk.on("click", () => focusCourse(c.id, { fromMap: true }));
       courseMarkers[c.id] = mk;
     });
+    if (userLoc) {
+      const meIcon = L.divIcon({ className: "leaf-me-wrap", html: `<span class="leaf-me"></span>`, iconSize: [16, 16], iconAnchor: [8, 8] });
+      L.marker([userLoc.lat, userLoc.lng], { icon: meIcon, zIndexOffset: 1000 }).addTo(map)
+        .bindPopup("You're here", { className: "course-popup", closeButton: false });
+    }
     setTimeout(() => map.invalidateSize(), 60);
     // if no tiles arrive (offline / blocked network), drop back to the illustrated map
     setTimeout(() => { if (loaded === 0 && leafletMap === map) renderFallbackMap(el); }, 2600);
@@ -1089,6 +1136,7 @@
       if (act === "remind-pay") { toast("Reminder sent to everyone who hasn't paid yet."); return; }
       if (act === "new-day") { openModal("newday"); return; }
       if (act === "compose") { openModal("compose"); return; }
+      if (act === "locate") { locate(); return; }
       if (act === "edit-profile") { openModal("editprofile"); return; }
       if (act === "pick-colour") {
         epColour = actEl.dataset.colour;
