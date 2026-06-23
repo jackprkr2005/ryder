@@ -93,6 +93,29 @@ Then enable the **Push Notifications** capability in Xcode and wire a few
 notifications (new chat message, booking confirmed, payment received). Ask me
 and I'll add the front-end hooks for these.
 
+## Enabling accurate location (course map)
+
+The web Geolocation API is blocked inside iOS's web view, so the native app uses
+Capacitor's Geolocation plugin (the web/Base44 version falls back to the browser
+automatically). To turn it on for iOS:
+
+```bash
+npm i @capacitor/geolocation
+npm run ios:sync
+```
+
+Then add a usage string so iOS can ask permission — **required**, or the app
+crashes when it requests location:
+
+- In Xcode open `App/App/Info.plist` → add key
+  **Privacy - Location When In Use Usage Description**
+  (`NSLocationWhenInUseUsageDescription`), value e.g.:
+
+  > Ryder uses your location to show golf courses and societies near you.
+
+The "Use my location" button on the Courses tab then centres the map on you,
+drops a "you're here" pin, and sorts courses by real distance.
+
 ## Updating the app after web changes
 
 Whenever the web app changes, refresh the native build and re-archive:
