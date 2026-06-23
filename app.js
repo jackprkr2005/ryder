@@ -311,7 +311,7 @@
         <p>Golf is better with a crew. Discover societies, clubs and players near <b>North Devon</b>, or search to find anyone.</p>
         <label class="search big">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
-          <input id="discSearch" type="text" autocomplete="off" placeholder="Search clubs, societies or players…" />
+          <input id="discSearch" type="text" autocomplete="off" placeholder="Search societies or players…" />
         </label>
       </div>
 
@@ -338,30 +338,24 @@
     </div>`;
   }
 
-  // ---- live search across societies, clubs/courses and players ----
+  // ---- live search across societies and players (clubs live on Courses) ----
   function searchAll(q) {
     const t = q.toLowerCase();
     const has = (s) => s.toLowerCase().includes(t);
     return {
       socs: data.societies.filter((s) => has(`${s.name} ${s.loc} ${s.handle || ""}`)).slice(0, 8),
-      courses: data.courses.filter((c) => has(`${c.name} ${c.town} ${c.type}`)).slice(0, 8),
-      people: data.golfers.filter((g) => g.id !== ME && has(`${g.name} ${g.club} ${g.handle || ""} ${g.loc || ""}`)).slice(0, 8),
+      people: data.golfers.filter((g) => g.id !== ME && has(`${g.name} ${g.club} ${g.handle || ""} ${g.loc || ""}`)).slice(0, 12),
     };
   }
   function searchResultsHTML(q) {
-    const { socs, courses, people } = searchAll(q);
-    if (!socs.length && !courses.length && !people.length)
-      return `<p class="muted pad-x" style="padding:18px 2px">No clubs, societies or players match “${esc(q)}”.</p>`;
+    const { socs, people } = searchAll(q);
+    if (!socs.length && !people.length)
+      return `<p class="muted pad-x" style="padding:18px 2px">No societies or players match “${esc(q)}”.</p>`;
     let h = "";
     if (socs.length) h += `<p class="section-title">Societies</p><div class="srch-list">${socs.map((s) => `
       <div class="srch-row card" data-nav="society" data-id="${s.id}">
         <span class="soc-avatar" style="width:44px;height:44px;font-size:15px;background:${grad(s.colour)}">${mono(s.name)}</span>
         <div class="srch-text"><div class="srch-name">${s.name}</div><div class="srch-meta">${s.loc} · ${s.members.length} member${s.members.length === 1 ? "" : "s"}</div></div>
-      </div>`).join("")}</div>`;
-    if (courses.length) h += `<p class="section-title">Clubs &amp; courses</p><div class="srch-list">${courses.map((c) => `
-      <div class="srch-row card" data-act="goto-course" data-id="${c.id}">
-        <span class="cc-marker" style="width:44px;height:44px;font-size:15px;background:${solid(c.colour)}">${mono(c.name)}</span>
-        <div class="srch-text"><div class="srch-name">${c.name}</div><div class="srch-meta">${c.town} · ${c.holes} holes · par ${c.par}</div></div>
       </div>`).join("")}</div>`;
     if (people.length) h += `<p class="section-title">Players</p><div class="srch-list">${people.map((g) => `
       <div class="srch-row card" data-nav="profile" data-id="${g.id}">
@@ -379,6 +373,20 @@
     res.innerHTML = searchResultsHTML(q);
     res.hidden = false;
     if (browse) browse.hidden = true;
+  }
+  // filter the course list in place (clubs search on the Courses tab)
+  function doCourseSearch(q) {
+    q = (q || "").trim().toLowerCase();
+    let shown = 0;
+    data.courses.forEach((c) => {
+      const el = document.getElementById("course-" + c.id);
+      if (!el) return;
+      const match = !q || `${c.name} ${c.town} ${c.type}`.toLowerCase().includes(q);
+      el.style.display = match ? "" : "none";
+      if (match) shown++;
+    });
+    const empty = document.getElementById("courseEmpty");
+    if (empty) empty.hidden = shown > 0;
   }
 
   // ===================================================================
@@ -871,10 +879,15 @@
       <div class="card disc-hero">
         <h2>Find a course to play</h2>
         <p>Browse the clubs near you, see who already plays where, and start a Ryder Cup day at any of them. Tap a marker to jump to a club.</p>
-        <button class="btn ${userLoc ? "outline" : "primary"} sm" data-act="locate" style="margin-top:14px">${userLoc ? "📍 Sorted by distance from you" : "📍 Use my location"}</button>
+        <label class="search big">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+          <input id="courseSearch" type="text" autocomplete="off" placeholder="Search clubs by name or town…" />
+        </label>
+        <button class="btn ${userLoc ? "outline" : "primary"} sm" data-act="locate" style="margin-top:12px">${userLoc ? "📍 Sorted by distance from you" : "📍 Use my location"}</button>
       </div>
       <div id="coursemap" class="coursemap card"></div>
       <p class="section-title">${userLoc ? "Courses nearest you" : "Clubs near you"} · ${data.courses.length}</p>
+      <p id="courseEmpty" class="muted pad-x" hidden style="padding:8px 2px">No clubs match your search.</p>
       <div class="course-list">${cards}</div>
     </div>`;
   }
@@ -1122,7 +1135,10 @@
 
   // ---- delegated events -------------------------------------------
   document.addEventListener("input", (ev) => {
-    if (ev.target && ev.target.id === "discSearch") doDiscoverSearch(ev.target.value);
+    const t = ev.target;
+    if (!t) return;
+    if (t.id === "discSearch") doDiscoverSearch(t.value);
+    else if (t.id === "courseSearch") doCourseSearch(t.value);
   });
   document.addEventListener("click", (ev) => {
     const navEl = ev.target.closest("[data-nav]");
@@ -1187,7 +1203,6 @@
       if (act === "new-day") { openModal("newday"); return; }
       if (act === "compose") { openModal("compose"); return; }
       if (act === "locate") { locate(); return; }
-      if (act === "goto-course") { const cid = actEl.dataset.id; nav("courses"); setTimeout(() => focusCourse(cid, {}), 140); return; }
       if (act === "edit-profile") { openModal("editprofile"); return; }
       if (act === "pick-colour") {
         epColour = actEl.dataset.colour;
