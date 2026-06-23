@@ -308,30 +308,77 @@
     return `<div class="view">
       <div class="disc-hero card">
         <h2>Find your next round</h2>
-        <p>Golf is better with a crew. Discover societies and open days near <b>North Devon</b>, or follow players to organise your own Ryder Cup.</p>
+        <p>Golf is better with a crew. Discover societies, clubs and players near <b>North Devon</b>, or search to find anyone.</p>
         <label class="search big">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
-          <input type="text" placeholder="Try a town, club or society…" value="North Devon" />
+          <input id="discSearch" type="text" autocomplete="off" placeholder="Search clubs, societies or players…" />
         </label>
       </div>
 
-      <p class="section-title">Societies near you</p>
-      <div class="disc-grid">${data.societies.map(societyCard).join("")}</div>
+      <div id="discResults" hidden></div>
 
-      <p class="section-title">Open days — jump straight in</p>
-      <div class="open-grid">${openDays.map(openDayCard).join("")}</div>
+      <div id="discBrowse">
+        <p class="section-title">Societies near you</p>
+        <div class="disc-grid">${data.societies.map(societyCard).join("")}</div>
 
-      <p class="section-title">Players near you</p>
-      <div class="people-grid">
-        ${near.map((g) => `<div class="person card" data-nav="profile" data-id="${g.id}">
-          ${av(g.id, 46)}
-          <div class="person-name">${g.name}</div>
-          <div class="person-meta">${g.club}</div>
-          <div class="person-stats"><span>hcp <b>${g.hcp}</b></span><span>${g.rec.w}W</span></div>
-          <button class="btn ${isFollowing(g.id) ? "ghost" : "outline"} xs" data-act="follow" data-id="${g.id}">${isFollowing(g.id) ? "✓ Following" : "Follow"}</button>
-        </div>`).join("")}
+        <p class="section-title">Open days — jump straight in</p>
+        <div class="open-grid">${openDays.map(openDayCard).join("")}</div>
+
+        <p class="section-title">Players near you</p>
+        <div class="people-grid">
+          ${near.map((g) => `<div class="person card" data-nav="profile" data-id="${g.id}">
+            ${av(g.id, 46)}
+            <div class="person-name">${g.name}</div>
+            <div class="person-meta">${g.club}</div>
+            <div class="person-stats"><span>hcp <b>${g.hcp}</b></span><span>${g.rec.w}W</span></div>
+            <button class="btn ${isFollowing(g.id) ? "ghost" : "outline"} xs" data-act="follow" data-id="${g.id}">${isFollowing(g.id) ? "✓ Following" : "Follow"}</button>
+          </div>`).join("")}
+        </div>
       </div>
     </div>`;
+  }
+
+  // ---- live search across societies, clubs/courses and players ----
+  function searchAll(q) {
+    const t = q.toLowerCase();
+    const has = (s) => s.toLowerCase().includes(t);
+    return {
+      socs: data.societies.filter((s) => has(`${s.name} ${s.loc} ${s.handle || ""}`)).slice(0, 8),
+      courses: data.courses.filter((c) => has(`${c.name} ${c.town} ${c.type}`)).slice(0, 8),
+      people: data.golfers.filter((g) => g.id !== ME && has(`${g.name} ${g.club} ${g.handle || ""} ${g.loc || ""}`)).slice(0, 8),
+    };
+  }
+  function searchResultsHTML(q) {
+    const { socs, courses, people } = searchAll(q);
+    if (!socs.length && !courses.length && !people.length)
+      return `<p class="muted pad-x" style="padding:18px 2px">No clubs, societies or players match “${esc(q)}”.</p>`;
+    let h = "";
+    if (socs.length) h += `<p class="section-title">Societies</p><div class="srch-list">${socs.map((s) => `
+      <div class="srch-row card" data-nav="society" data-id="${s.id}">
+        <span class="soc-avatar" style="width:44px;height:44px;font-size:15px;background:${grad(s.colour)}">${mono(s.name)}</span>
+        <div class="srch-text"><div class="srch-name">${s.name}</div><div class="srch-meta">${s.loc} · ${s.members.length} member${s.members.length === 1 ? "" : "s"}</div></div>
+      </div>`).join("")}</div>`;
+    if (courses.length) h += `<p class="section-title">Clubs &amp; courses</p><div class="srch-list">${courses.map((c) => `
+      <div class="srch-row card" data-act="goto-course" data-id="${c.id}">
+        <span class="cc-marker" style="width:44px;height:44px;font-size:15px;background:${solid(c.colour)}">${mono(c.name)}</span>
+        <div class="srch-text"><div class="srch-name">${c.name}</div><div class="srch-meta">${c.town} · ${c.holes} holes · par ${c.par}</div></div>
+      </div>`).join("")}</div>`;
+    if (people.length) h += `<p class="section-title">Players</p><div class="srch-list">${people.map((g) => `
+      <div class="srch-row card" data-nav="profile" data-id="${g.id}">
+        ${av(g.id, 44)}
+        <div class="srch-text"><div class="srch-name">${g.name}</div><div class="srch-meta">@${g.handle} · ${g.club} · hcp ${g.hcp}</div></div>
+      </div>`).join("")}</div>`;
+    return h;
+  }
+  function doDiscoverSearch(q) {
+    const res = document.getElementById("discResults");
+    const browse = document.getElementById("discBrowse");
+    if (!res) return;
+    q = (q || "").trim();
+    if (!q) { res.hidden = true; res.innerHTML = ""; if (browse) browse.hidden = false; return; }
+    res.innerHTML = searchResultsHTML(q);
+    res.hidden = false;
+    if (browse) browse.hidden = true;
   }
 
   // ===================================================================
@@ -1074,6 +1121,9 @@
   function nav(view, id, tab) { route = { view, id: id || null, tab: tab || null }; render(); }
 
   // ---- delegated events -------------------------------------------
+  document.addEventListener("input", (ev) => {
+    if (ev.target && ev.target.id === "discSearch") doDiscoverSearch(ev.target.value);
+  });
   document.addEventListener("click", (ev) => {
     const navEl = ev.target.closest("[data-nav]");
     const actEl = ev.target.closest("[data-act]");
@@ -1137,6 +1187,7 @@
       if (act === "new-day") { openModal("newday"); return; }
       if (act === "compose") { openModal("compose"); return; }
       if (act === "locate") { locate(); return; }
+      if (act === "goto-course") { const cid = actEl.dataset.id; nav("courses"); setTimeout(() => focusCourse(cid, {}), 140); return; }
       if (act === "edit-profile") { openModal("editprofile"); return; }
       if (act === "pick-colour") {
         epColour = actEl.dataset.colour;
