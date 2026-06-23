@@ -5,10 +5,17 @@
 ------------------------------------------------------------------ */
 const { DatabaseSync } = require("node:sqlite");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
 const path = require("node:path");
 const seed = require("./seed");
 
-const db = new DatabaseSync(path.join(__dirname, "ryder.db"));
+// The database file. In production point RYDER_DB at a persistent disk
+// (e.g. Render: /var/data/ryder.db) so data survives deploys/restarts.
+// Defaults to server/ryder.db for local development.
+const DB_PATH = process.env.RYDER_DB || path.join(__dirname, "ryder.db");
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+
+const db = new DatabaseSync(DB_PATH);
 db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
 
 db.exec(`
